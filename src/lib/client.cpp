@@ -9,7 +9,7 @@
 
 using boost::asio::ip::tcp;
 
-typedef std::deque<chat_message> chat_message_queue;
+typedef std::deque<Message> chat_message_queue;
 
 class chat_client {
 public:
@@ -18,7 +18,7 @@ public:
         do_connect(endpoints);
     }
 
-    void write(const chat_message& msg) {
+    void write(const Message& msg) {
         boost::asio::post(io_context_, [this, msg]() {
             bool write_in_progress = !write_msgs_.empty();
             write_msgs_.push_back(msg);
@@ -42,7 +42,7 @@ private:
     }
 
     void do_read_header() {
-        boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), chat_message::header_length),
+        boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), Message::kHeaderSize),
                                 [this](boost::system::error_code ec, std::size_t /*length*/) {
                                     if (!ec && read_msg_.decode_header()) {
                                         do_read_body();
@@ -66,7 +66,8 @@ private:
     }
 
     void do_write() {
-        boost::asio::async_write(socket_, boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().length()),
+        boost::asio::async_write(socket_,
+                                 boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().get_length()),
                                  [this](boost::system::error_code ec, std::size_t /*length*/) {
                                      if (!ec) {
                                          write_msgs_.pop_front();
@@ -82,50 +83,29 @@ private:
 private:
     boost::asio::io_context& io_context_;
     tcp::socket socket_;
-    chat_message read_msg_;
+    Message read_msg_;
     chat_message_queue write_msgs_;
 };
 
-Client::Client(std::string ip, int port) {
-    tcp::resolver resolver(io_context_);
-    auto endpoints = resolver.resolve(ip.c_str(), std::to_string(port));
-    impl_ = std::make_unique<chat_client>(io_context_, endpoints);
+class Connection : public IConnection {
+public:
+    Connection(std::string ip, uint16_t port) {
+        tcp::resolver resolver(io_context_);
+        auto endpoints = resolver.resolve(ip.c_str(), std::to_string(port));
+        client_.emplace(io_context_, endpoints);
+        thread_ = std::jthread([this]() { io_context_.run(); });
+    }
+
+    ~Connection() { client_->close(); }
+
+    void SendMesasge(std::string msg) override { client_->write(Message{msg}); }
+
+private:
+    std::jthread thread_;
+    boost::asio::io_context io_context_;
+    std::optional<chat_client> client_;
+};
+
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port) {
+    return std::make_shared<Connection>(std::move(ip), port);
 }
-
-Client::~Client() = default;
-
-void Client::Send(std::string msg) {
-    std::thread t([this]() { io_context_.run(); });
-
-    chat_message cmsg;
-    cmsg.body_length(msg.size());
-    std::memcpy(cmsg.body(), msg.data(), cmsg.body_length());
-    cmsg.encode_header();
-    impl_->write(cmsg);
-    // impl_->close();
-    t.join();
-}
-
-// int main(int argc, char* argv[])
-//{
-//    try
-//    {
-//        if (argc != 3)
-//        {
-//            std::cerr << "Usage: chat_client <host> <port>\n";
-//            return 1;
-//        }
-//
-//        boost::asio::io_context io_context;
-//
-//
-//
-
-//    }
-//    catch (std::exception& e)
-//    {
-//        std::cerr << "Exception: " << e.what() << "\n";
-//    }
-//
-//    return 0;
-//}

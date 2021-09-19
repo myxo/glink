@@ -8,7 +8,7 @@ int main(int argc, char *argv[]) {
         server.Start();
         server.Stop();
     } else {
-        Client client("127.0.0.1", 9078);
-        client.Send("Hello world!");
+        auto connection = CreateConnection("127.0.0.1", 9078);
+        connection->SendMesasge("Hello world!");
     }
 }

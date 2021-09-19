@@ -14,14 +14,14 @@ using boost::asio::ip::tcp;
 
 //----------------------------------------------------------------------
 
-typedef std::deque<chat_message> chat_message_queue;
+typedef std::deque<Message> chat_message_queue;
 
 //----------------------------------------------------------------------
 
 class chat_participant {
 public:
     virtual ~chat_participant() {}
-    virtual void deliver(const chat_message& msg) = 0;
+    virtual void deliver(const Message& msg) = 0;
 };
 
 typedef std::shared_ptr<chat_participant> chat_participant_ptr;
@@ -37,7 +37,7 @@ public:
 
     void leave(chat_participant_ptr participant) { participants_.erase(participant); }
 
-    void deliver(const chat_message& msg) {
+    void deliver(const Message& msg) {
         recent_msgs_.push_back(msg);
         while (recent_msgs_.size() > max_recent_msgs) recent_msgs_.pop_front();
 
@@ -61,7 +61,7 @@ public:
         do_read_header();
     }
 
-    void deliver(const chat_message& msg) {
+    void deliver(const Message& msg) {
         bool write_in_progress = !write_msgs_.empty();
         write_msgs_.push_back(msg);
         if (!write_in_progress) {
@@ -72,7 +72,7 @@ public:
 private:
     void do_read_header() {
         auto self(shared_from_this());
-        boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), chat_message::header_length),
+        boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), Message::kHeaderSize),
                                 [this, self](boost::system::error_code ec, std::size_t /*length*/) {
                                     std::cout << "async read header\n";
                                     if (!ec && read_msg_.decode_header()) {
@@ -99,7 +99,7 @@ private:
 
     void do_write() {
         auto self(shared_from_this());
-        boost::asio::async_write(socket_, boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().length()),
+        boost::asio::async_write(socket_, boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().get_length()),
                                  [this, self](boost::system::error_code ec, std::size_t /*length*/) {
                                      if (!ec) {
                                          write_msgs_.pop_front();
@@ -114,7 +114,7 @@ private:
 
     tcp::socket socket_;
     chat_room& room_;
-    chat_message read_msg_;
+    Message read_msg_;
     chat_message_queue write_msgs_;
 };
 

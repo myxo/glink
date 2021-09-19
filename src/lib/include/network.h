@@ -19,14 +19,8 @@ private:
     std::unique_ptr<chat_server> impl_;
 };
 
-class chat_client;
-class Client {
+class IConnection {
 public:
-    Client(std::string ip, int port);
-    ~Client();
-    void Send(std::string msg);
-
-private:
-    boost::asio::io_context io_context_;
-    std::unique_ptr<chat_client> impl_;
+    virtual void SendMesasge(std::string msg) = 0;
 };
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port);
