@@ -2,11 +2,14 @@
 #include "network.h"
 #include "../../lib/discovery/local_broadcaster.h"
 #include "../../lib/discovery/local_receiver.h"
+
 #include <string>
 #include <iostream>
 
+#include <spdlog/spdlog.h>
 
 int main(int argc, char *argv[]) {
+    spdlog::set_level(spdlog::level::trace);
     try {
         auto receiver = CreateLocalReceiver();
         auto broadcaster = CreateLocalBroadcaster(std::chrono::seconds(1));

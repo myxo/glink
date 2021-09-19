@@ -2,7 +2,6 @@
 
 #include <boost/asio.hpp>
 #include <thread>
-#include <iostream>
 #include <boost/json.hpp>
 
 // Some boost hack. TODO: make special cpp file for this
@@ -53,9 +52,6 @@ private:
     void SendData() {
         if (data_.empty())
             return;
-
-        static int index = 0;
-        std::cout << index++ << ". Broadcast send\n";
         socket_.send_to(net::buffer(data_), endpoint_);
     }
 

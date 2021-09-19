@@ -19,3 +19,5 @@ target_sources(chatik_core PRIVATE
 target_include_directories(chatik_core PUBLIC "include")
 
 target_compile_definitions(chatik_core PRIVATE _WIN32_WINNT=0x0601)
+
+target_link_libraries(chatik_core PRIVATE ${CONAN_LIBS} )

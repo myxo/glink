@@ -1,11 +1,12 @@
 #include "local_receiver.h"
+#include "local_broadcaster.h"
 
-#include <boost/asio.hpp>
-#include <iostream>
 #include <array>
 #include <thread>
 
-#include "local_broadcaster.h"
+#include <boost/asio.hpp>
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/ostr.h>
 
 namespace net = boost::asio;
 
@@ -29,10 +30,9 @@ private:
         socket_.async_receive_from(net::buffer(buffer_), remote_endpoint_,
                                    [this](const boost::system::error_code& error, size_t bytes_transferred) {
                                        if (error) {
-                                           std::cout << "Receive error: " << error.message();
+                                           spdlog::warn("Receive error: {}", error.message());
                                        }
-                                       std::cout << "Receive! " << bytes_transferred << " bytes from "
-                                                 << remote_endpoint_ << ", " << buffer_.data() << "\n";
+                                       spdlog::trace("LocalReceiver: receive {} bytes from {}. '{}'", bytes_transferred, remote_endpoint_, buffer_.data());
                                        Receive();
                                    });
     }
