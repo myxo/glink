@@ -10,6 +10,7 @@ include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup()
 
 set (CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_BINARY_DIR}")
+set (CMAKE_BUILD_PARALLEL_LEVEL 8)
 
 add_subdirectory(src/lib)
 add_subdirectory(src/bin)

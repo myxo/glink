@@ -1,0 +1,6 @@
+☐ Make single operation asio "Read message", "Write message"
+☐ Use coroutine
+☐ Connection pool
+☐ Discovery module
+☐ Single thread pool
+☐ spdlog
