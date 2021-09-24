@@ -12,14 +12,11 @@ namespace net = boost::asio;
 class LocalBroadcaster : public ILocalBroadcaster {
 public:
     LocalBroadcaster(std::chrono::milliseconds period)
-        : socket_(io_context_, net::ip::udp::endpoint(net::ip::address::from_string("192.168.0.101"), 0)),
-          endpoint_(net::ip::address_v4::broadcast(), kBroadcastPort),
+        : socket_(io_context_, endpoint_.protocol()),
+          endpoint_(net::ip::address::from_string(kMulticastIp), kBroadcastPort),
           timer_(io_context_, period),
           period_ (period){
 
-        //socket_.open(net::ip::udp::v4());
-        //socket_.set_option(net::ip::udp::socket::reuse_address(true));
-        socket_.set_option(net::socket_base::broadcast(true));
         thread_ = std::jthread{[this] { io_context_.run(); }};
         ScheduleTimer();
     }
@@ -61,8 +58,8 @@ private:
 
     std::jthread thread_;
     net::io_context io_context_;
-    net::ip::udp::socket socket_;
     net::ip::udp::endpoint endpoint_;
+    net::ip::udp::socket socket_;
     net::steady_timer timer_;
     std::chrono::milliseconds period_;
 };

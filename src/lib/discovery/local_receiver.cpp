@@ -13,13 +13,13 @@ namespace net = boost::asio;
 class LocalReceiver : public ILocalReceiver {
 public:
     LocalReceiver() : socket_(io_context_) {
-        socket_.open(net::ip::udp::v4());
-        socket_.bind(net::ip::udp::endpoint(net::ip::address::from_string("192.168.0.101"), kBroadcastPort));
-        socket_.set_option(net::socket_base::reuse_address(true));
-        socket_.set_option(net::socket_base::broadcast(true));
+        boost::asio::ip::udp::endpoint listen_endpoint(net::ip::address::from_string("0.0.0.0"), kBroadcastPort);
+        socket_.open(listen_endpoint.protocol());
+        socket_.set_option(boost::asio::ip::udp::socket::reuse_address(true));
+        socket_.bind(listen_endpoint);
 
-        // socket_.bind(net::ip::udp::endpoint(net::ip::udp::v4(), kBroadcastPort));
-        // socket_.open(net::ip::udp::v4(), kBroadcastPort);
+        socket_.set_option(boost::asio::ip::multicast::join_group(net::ip::address::from_string(kMulticastIp)));
+
         thread_ = std::jthread{[this] { io_context_.run(); }};
         Receive();
     }
