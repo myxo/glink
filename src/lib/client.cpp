@@ -7,6 +7,8 @@
 #include "message.h"
 #include "network.h"
 
+#include <spdlog/spdlog.h>
+
 using boost::asio::ip::tcp;
 
 typedef std::deque<Message> chat_message_queue;
@@ -68,7 +70,8 @@ private:
     void do_write() {
         boost::asio::async_write(socket_,
                                  boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().get_length()),
-                                 [this](boost::system::error_code ec, std::size_t /*length*/) {
+                                 [this](boost::system::error_code ec, std::size_t length) {
+                                    spdlog::trace("Connection: write complete, wrote {} bytes", length);
                                      if (!ec) {
                                          write_msgs_.pop_front();
                                          if (!write_msgs_.empty()) {
@@ -93,12 +96,19 @@ public:
         tcp::resolver resolver(io_context_);
         auto endpoints = resolver.resolve(ip.c_str(), std::to_string(port));
         client_.emplace(io_context_, endpoints);
-        thread_ = std::jthread([this]() { io_context_.run(); });
+        thread_ = std::jthread([this]() { 
+            io_context_.run(); 
+        });
     }
 
-    ~Connection() { client_->close(); }
+    ~Connection() {
+        client_->close();
+        thread_.join();
+    }
 
-    void SendMesasge(std::string msg) override { client_->write(Message{msg}); }
+    void SendMesasge(std::string msg) override {
+        client_->write(Message{msg});
+    }
 
 private:
     std::jthread thread_;

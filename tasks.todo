@@ -1,6 +1,8 @@
+☐ Make db with id, name, etc.
+☐ Simple TUI
 ☐ Make single operation asio "Read message", "Write message"
 ☐ Use coroutine
 ☐ Connection pool
 ☐ Discovery module
 ☐ Single thread pool
-☐ spdlog
+✔ spdlog @done (9/25/2021, 5:26:04 PM)

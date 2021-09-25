@@ -1,5 +1,6 @@
 
 #include "network.h"
+#include "utils.h"
 #include "../../lib/discovery/local_broadcaster.h"
 #include "../../lib/discovery/local_receiver.h"
 
@@ -8,27 +9,42 @@
 
 #include <spdlog/spdlog.h>
 
+#include <boost/uuid/uuid.hpp>
+#include <boost/uuid/uuid_generators.hpp>
+#include <boost/uuid/uuid_io.hpp>
+
 int main(int argc, char *argv[]) {
-    spdlog::set_level(spdlog::level::trace);
+    spdlog::set_level(spdlog::level::debug);
+
+    std::string uuid = to_string(boost::uuids::random_generator()());
+    auto connection_pool = CreateConnectionPool();
+
+    spdlog::info("My uuid: {}", uuid);
+
     try {
         auto receiver = CreateLocalReceiver();
         auto broadcaster = CreateLocalBroadcaster(std::chrono::seconds(1));
-        broadcaster->SetBroadcastData(BroadcastData{.id = "test_id", .ip = "192.168.0.101", .port = 1234});
+
+        receiver->OnNewEndpoint([&](std::string id, Endpoint ep){
+            if (id == uuid) {
+                return;
+            }
+            auto connection = connection_pool->CreateConnection(id, ep.ip, ep.port);
+            connection->SendMesasge(fmt::format("Hello from {}!", uuid));
+        });
+
+
+        Server server;
+        auto local_ips = GetLocalInterfacesIp();
+        
+        broadcaster->SetBroadcastData(BroadcastData{.id = uuid, .ip = local_ips.front(), .port = server.GetPort()});
+        server.Start();
 
         while(true);
 
+        server.Stop();
+
     } catch (std::exception const& e) {
         std::cout << "exception: " << e.what();
-    }
-
-
-    return 0;
-    if (argc > 1 && std::string_view(argv[1]) == "server") {
-        Server server(9078);
-        server.Start();
-        server.Stop();
-    } else {
-        auto connection = CreateConnection("127.0.0.1", 9078);
-        connection->SendMesasge("Hello world!");
     }
 }

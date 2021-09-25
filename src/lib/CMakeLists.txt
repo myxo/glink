@@ -12,7 +12,10 @@ target_sources(chatik_core PRIVATE
 	network.cpp
 	server.cpp
 	client.cpp
+	client.h
+	utils.cpp
 	message.h
+	include/utils.h
 	include/network.h
 )
 

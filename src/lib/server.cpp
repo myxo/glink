@@ -1,7 +1,6 @@
 #include <boost/asio.hpp>
 #include <cstdlib>
 #include <deque>
-#include <iostream>
 #include <list>
 #include <memory>
 #include <set>
@@ -9,6 +8,8 @@
 
 #include "message.h"
 #include "network.h"
+
+#include <spdlog/spdlog.h>
 
 using boost::asio::ip::tcp;
 
@@ -73,11 +74,13 @@ private:
     void do_read_header() {
         auto self(shared_from_this());
         boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), Message::kHeaderSize),
-                                [this, self](boost::system::error_code ec, std::size_t /*length*/) {
-                                    std::cout << "async read header\n";
+                                [this, self](boost::system::error_code ec, std::size_t length) {
                                     if (!ec && read_msg_.decode_header()) {
+                                        spdlog::trace("Server: read header ({} bytes), now async read body ({} bytes)",
+                                                      length, read_msg_.body_length());
                                         do_read_body();
                                     } else {
+                                        spdlog::info("Server: error on reading header: {}", ec.message());
                                         room_.leave(shared_from_this());
                                     }
                                 });
@@ -86,12 +89,13 @@ private:
     void do_read_body() {
         auto self(shared_from_this());
         boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.body(), read_msg_.body_length()),
-                                [this, self](boost::system::error_code ec, std::size_t /*length*/) {
+                                [this, self](boost::system::error_code ec, std::size_t length) {
                                     if (!ec) {
-                                        std::cout << "async read body: " << read_msg_.body() << "\n";
+                                        spdlog::debug("Server: finish read body ({} bytes): {}", length, read_msg_.body());
                                         room_.deliver(read_msg_);
                                         do_read_header();
                                     } else {
+                                        spdlog::info("Server: error on reading body: {}", ec.message());
                                         room_.leave(shared_from_this());
                                     }
                                 });
@@ -126,10 +130,10 @@ public:
         do_accept();
     }
 
-private:
+public:
     void do_accept() {
         acceptor_.async_accept([this](boost::system::error_code ec, tcp::socket socket) {
-            std::cout << "Accept\n";
+            spdlog::debug("Server: accept new connection");
             if (!ec) {
                 std::make_shared<chat_session>(std::move(socket), room_)->start();
             }
@@ -142,12 +146,19 @@ private:
     chat_room room_;
 };
 
-Server::Server(int port) {
-    tcp::endpoint endpoint(tcp::v4(), port);
-    impl_ = std::make_unique<chat_server>(io_context_, endpoint);
+Server::Server() : endpoint_(tcp::v4(), 0) {
+    impl_ = std::make_unique<chat_server>(io_context_, endpoint_);
 }
 
 Server::~Server() = default;
 
 void Server::Start() { io_context_.run(); }
 void Server::Stop() {}
+
+std::string Server::GetIp() const {
+    return impl_->acceptor_.local_endpoint().address().to_string();
+}
+
+uint16_t Server::GetPort() const {
+    return impl_->acceptor_.local_endpoint().port();
+}
