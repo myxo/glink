@@ -1,17 +1,10 @@
 #pragma once
 
+#include "discovery_service.h"
+
 #include <memory>
 #include <string>
 #include <chrono>
-
-constexpr uint16_t kBroadcastPort = 9078;
-constexpr const char* kMulticastIp = "239.255.0.1";
-
-struct BroadcastData {
-    std::string id;
-    std::string ip;
-    uint16_t port;
-};
 
 class ILocalBroadcaster {
 public:

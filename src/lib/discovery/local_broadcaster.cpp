@@ -27,7 +27,7 @@ public:
 
     void SetBroadcastData(BroadcastData data) override {
         // TODO: some binary representation
-        boost::json::value val = {{"id", data.id}, {"ip", data.ip}, {"port", data.port}};
+        boost::json::value val = {{"id", data.id}, {"ip", data.ep.ip}, {"port", data.ep.port}};
 
         auto val_str = boost::json::serialize(val);
         data_ = std::move(val_str);

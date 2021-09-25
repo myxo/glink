@@ -5,6 +5,7 @@ set (discovery_sources
 	discovery/local_broadcaster.h
 	discovery/local_receiver.cpp
 	discovery/local_receiver.h
+	discovery/discovery_service.cpp
 )
 
 target_sources(chatik_core PRIVATE
@@ -17,6 +18,7 @@ target_sources(chatik_core PRIVATE
 	message.h
 	include/utils.h
 	include/network.h
+	include/discovery_service.h
 )
 
 target_include_directories(chatik_core PUBLIC "include")

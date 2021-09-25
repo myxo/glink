@@ -1,15 +1,12 @@
 #pragma once
 
+#include "discovery_service.h"
+
 #include <chrono>
 #include <memory>
 #include <string>
 #include <map>
 #include <functional>
-
-struct Endpoint {
-    std::string ip;
-    uint16_t port;
-};
 
 class ILocalReceiver {
 public:
