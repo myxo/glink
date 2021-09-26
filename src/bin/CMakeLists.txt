@@ -5,3 +5,5 @@ target_sources(chatik_app PRIVATE
 )
 
 target_link_libraries(chatik_app PRIVATE chatik_core)
+
+target_compile_definitions(chatik_app PRIVATE _WIN32_WINNT=0x0601)

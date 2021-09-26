@@ -3,6 +3,8 @@
 #include "utils.h"
 
 #include <spdlog/spdlog.h>
+#include <spdlog/async.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
@@ -12,6 +14,7 @@
 
 int main(int argc, char* argv[]) {
     spdlog::set_level(spdlog::level::debug);
+    auto msg_logger = spdlog::stdout_color_mt("chat_msg");
 
     std::string uuid = to_string(boost::uuids::random_generator()());
     auto connection_pool = CreateConnectionPool();

@@ -3,6 +3,7 @@
 ☐ Make single operation asio "Read message", "Write message"
 ☐ Use coroutine
 ☐ Connection pool
-☐ Discovery module
+✔ Discovery module prototype @done (9/26/2021, 3:08:19 PM)
 ☐ Single thread pool
+☐ spdlog: save logger instead of spdlog::get ?
 ✔ spdlog @done (9/25/2021, 5:26:04 PM)

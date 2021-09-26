@@ -58,8 +58,8 @@ private:
         boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.body(), read_msg_.body_length()),
                                 [this](boost::system::error_code ec, std::size_t /*length*/) {
                                     if (!ec) {
-                                        std::cout.write(read_msg_.body(), read_msg_.body_length());
-                                        std::cout << "\n";
+                                        //std::cout.write(read_msg_.body(), read_msg_.body_length());
+                                        //std::cout << "\n";
                                         do_read_header();
                                     } else {
                                         socket_.close();
