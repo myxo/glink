@@ -9,15 +9,13 @@ class chat_server;
 
 class Server {
 public:
-    Server();
+    Server(boost::asio::io_context& io_context);
     ~Server();
-    void Start();
-    void Stop();
     std::string GetIp() const;
     uint16_t GetPort() const;
 
 private:
-    boost::asio::io_context io_context_;
+    boost::asio::io_context& io_context_;
     std::unique_ptr<chat_server> impl_;
     boost::asio::ip::tcp::endpoint endpoint_;
 };
@@ -29,7 +27,7 @@ public:
 
 class IConnectionPool {
 public:
-    virtual std::shared_ptr<IConnection> CreateConnection(std::string id, std::string ip, uint16_t port) = 0;
+    virtual void AddConnection(std::string id, std::shared_ptr<IConnection> conn) = 0;
 };
 
 std::shared_ptr<IConnectionPool> CreateConnectionPool();

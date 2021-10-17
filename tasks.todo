@@ -1,3 +1,4 @@
+☐ Handshake with metadata packet (name at first)
 ☐ Make db with id, name, etc.
 ☐ Simple TUI
 ☐ Make single operation asio "Read message", "Write message"

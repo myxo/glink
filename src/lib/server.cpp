@@ -17,14 +17,14 @@ namespace net = boost::asio;
 
 //----------------------------------------------------------------------
 
-typedef std::deque<Message> chat_message_queue;
+typedef std::deque<Packet> chat_message_queue;
 
 //----------------------------------------------------------------------
 
 class chat_participant {
 public:
     virtual ~chat_participant() {}
-    virtual void deliver(const Message& msg) = 0;
+    virtual void deliver(const Packet& msg) = 0;
 };
 
 typedef std::shared_ptr<chat_participant> chat_participant_ptr;
@@ -35,7 +35,7 @@ class chat_room {
 public:
     void join(chat_participant_ptr participant) {
         participants_.insert(participant);
-        for (auto msg : recent_msgs_) {
+        for (auto const& msg : recent_msgs_) {
             participant->deliver(msg);
         }
     }
@@ -44,7 +44,7 @@ public:
         participants_.erase(participant);
     }
 
-    void deliver(const Message& msg) {
+    void deliver(const Packet& msg) {
         recent_msgs_.push_back(msg);
         while (recent_msgs_.size() > max_recent_msgs) recent_msgs_.pop_front();
 
@@ -76,7 +76,7 @@ public:
             socket_.get_executor(), [self = shared_from_this()] { return self->Writer(); }, net::detached);
     }
 
-    void deliver(const Message& msg) {
+    void deliver(const Packet& msg) {
         write_msgs_.push_back(msg);
         timer_.cancel_one();
     }
@@ -90,23 +90,26 @@ public:
 private:
     net::awaitable<void> Reader() try {
         while (true) {
-            Message read_msg;
+            Packet read_msg;
             std::size_t length = co_await net::async_read(
-                socket_, boost::asio::buffer(read_msg.data(), Message::kHeaderSize), net::use_awaitable);
+                socket_, boost::asio::buffer(read_msg.GetHeaderAsString(), Packet::kHeaderSize), net::use_awaitable);
 
             if (!read_msg.decode_header()) {
                 spdlog::info("Server: error on reading header, cannot decode");
                 room_.leave(shared_from_this());
                 co_return;
             }
-            spdlog::trace("Server: read header ({} bytes), now async read body ({} bytes)", length,
-                          read_msg.body_length());
+            spdlog::debug("Server: read header ({} bytes), now async read body ({} bytes)", length,
+                          read_msg.GetBodySize());
 
-            length = co_await net::async_read(socket_, net::buffer(read_msg.body(), read_msg.body_length()),
-                                              net::use_awaitable);
+            std::string payload;
+            payload.resize(read_msg.GetBodySize());
+            length =
+                co_await net::async_read(socket_, net::buffer(payload.data(), read_msg.GetBodySize()), net::use_awaitable);
 
-            spdlog::debug("Server: finish read body ({} bytes): {}", length, read_msg.body());
-            spdlog::get("chat_msg")->info("{}", read_msg.body());
+            spdlog::debug("Server: finish read body ({} bytes): {}", length, read_msg.GetBodySize());
+            read_msg.GetPayloadMut() = payload;
+            spdlog::get("chat_msg")->info("{}", read_msg.GetPayload());
 
             room_.deliver(read_msg);
         }
@@ -121,8 +124,11 @@ private:
                 co_await timer_.async_wait(net::redirect_error(net::use_awaitable, ec));
             } else {
                 co_await net::async_write(socket_,
-                                          net::buffer(write_msgs_.front().data(), write_msgs_.front().get_length()),
+                                          net::buffer(write_msgs_.front().GetHeaderAsString(), Packet::kHeaderSize),
                                           net::use_awaitable);
+                co_await net::async_write(
+                    socket_, net::buffer(write_msgs_.front().GetPayload(), write_msgs_.front().GetBodySize()),
+                    net::use_awaitable);
                 write_msgs_.pop_front();
             }
         }
@@ -148,7 +154,8 @@ public:
 public:
     void do_accept() {
         acceptor_.async_accept([this](boost::system::error_code ec, tcp::socket socket) {
-            spdlog::debug("Server: accept new connection");
+            spdlog::debug("Server: accept new connection from {}:{}", socket.remote_endpoint().address().to_string(),
+                          socket.remote_endpoint().port());
             if (!ec) {
                 std::make_shared<chat_session>(std::move(socket), room_)->start();
             }
@@ -161,16 +168,12 @@ public:
     chat_room room_;
 };
 
-Server::Server() : endpoint_(tcp::v4(), 0) {
+Server::Server(boost::asio::io_context& io_context) : io_context_(io_context), endpoint_(tcp::v4(), 0) {
     impl_ = std::make_unique<chat_server>(io_context_, endpoint_);
+    spdlog::info("Create server on {}:{}", GetIp(), GetPort());
 }
 
 Server::~Server() = default;
-
-void Server::Start() {
-    io_context_.run();
-}
-void Server::Stop() {}
 
 std::string Server::GetIp() const {
     return impl_->acceptor_.local_endpoint().address().to_string();

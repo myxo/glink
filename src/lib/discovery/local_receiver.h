@@ -8,6 +8,8 @@
 #include <map>
 #include <functional>
 
+namespace net = boost::asio;
+
 class ILocalReceiver {
 public:
     virtual std::map<std::string, Endpoint> GetEndpoints() const = 0;
@@ -17,4 +19,4 @@ public:
     virtual void Stop() = 0;
 };
 
-std::shared_ptr<ILocalReceiver> CreateLocalReceiver();
+std::shared_ptr<ILocalReceiver> CreateLocalReceiver(net::io_context& io_context);

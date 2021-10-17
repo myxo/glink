@@ -11,13 +11,13 @@ namespace net = boost::asio;
 
 class LocalBroadcaster : public ILocalBroadcaster {
 public:
-    LocalBroadcaster(std::chrono::milliseconds period)
-        : socket_(io_context_, endpoint_.protocol()),
+    LocalBroadcaster(std::chrono::milliseconds period, net::io_context& io_context)
+        : io_context_(io_context),
+          socket_(io_context_, endpoint_.protocol()),
           endpoint_(net::ip::address::from_string(kMulticastIp), kBroadcastPort),
           timer_(io_context_, period),
           period_ (period){
 
-        thread_ = std::jthread{[this] { io_context_.run(); }};
         ScheduleTimer();
     }
 
@@ -56,14 +56,14 @@ private:
     // TODO: mutex
     std::string data_;
 
-    std::jthread thread_;
-    net::io_context io_context_;
+    net::io_context& io_context_;
     net::ip::udp::endpoint endpoint_;
     net::ip::udp::socket socket_;
     net::steady_timer timer_;
     std::chrono::milliseconds period_;
 };
 
-std::shared_ptr<ILocalBroadcaster> CreateLocalBroadcaster(std::chrono::milliseconds period) {
-    return std::make_shared<LocalBroadcaster>(period);
+std::shared_ptr<ILocalBroadcaster> CreateLocalBroadcaster(std::chrono::milliseconds period,
+                                                          net::io_context& io_context) {
+    return std::make_shared<LocalBroadcaster>(period, io_context);
 }

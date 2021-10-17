@@ -15,14 +15,16 @@ target_sources(chatik_core PRIVATE
 	client.cpp
 	client.h
 	utils.cpp
+	engine.cpp
 	message.h
 	include/utils.h
 	include/network.h
 	include/discovery_service.h
+	include/engine.h
 )
 
 target_include_directories(chatik_core PUBLIC "include")
 
 target_compile_definitions(chatik_core PRIVATE _WIN32_WINNT=0x0601)
 
-target_link_libraries(chatik_core PRIVATE ${CONAN_LIBS} )
+target_link_libraries(chatik_core PRIVATE ${CONAN_LIBS})

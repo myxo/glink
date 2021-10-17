@@ -2,4 +2,6 @@
 
 #include "network.h"
 
-std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port);
+namespace net = boost::asio;
+
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context);

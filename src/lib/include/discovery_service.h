@@ -5,6 +5,8 @@
 #include <string>
 #include <map>
 
+namespace net = boost::asio;
+
 constexpr uint16_t kBroadcastPort = 9078;
 constexpr const char* kMulticastIp = "239.255.0.1";
 
@@ -28,4 +30,4 @@ public:
     virtual void SetBroadcastData(BroadcastData data) = 0;
 };
 
-std::shared_ptr<IDiscovery> CreateDiscoveryService();
+std::shared_ptr<IDiscovery> CreateDiscoveryService(net::io_context& io_context);

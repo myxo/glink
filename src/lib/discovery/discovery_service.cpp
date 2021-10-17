@@ -1,13 +1,13 @@
 #include "discovery_service.h"
-#include "local_receiver.h"
-#include "local_broadcaster.h"
 
+#include "local_broadcaster.h"
+#include "local_receiver.h"
 
 class Discovery : public IDiscovery {
 public:
-    Discovery() {
-        local_receiver_ = CreateLocalReceiver();
-        local_broadcaster_ = CreateLocalBroadcaster(std::chrono::seconds(1));
+    Discovery(net::io_context& io_context) {
+        local_receiver_ = CreateLocalReceiver(io_context);
+        local_broadcaster_ = CreateLocalBroadcaster(std::chrono::seconds(1), io_context);
     }
 
     std::map<std::string, Endpoint> GetKnownEndpoints() const override {
@@ -27,6 +27,6 @@ private:
     std::shared_ptr<ILocalBroadcaster> local_broadcaster_;
 };
 
-std::shared_ptr<IDiscovery> CreateDiscoveryService() {
-    return std::make_shared<Discovery>();
+std::shared_ptr<IDiscovery> CreateDiscoveryService(net::io_context& io_context) {
+    return std::make_shared<Discovery>(io_context);
 }

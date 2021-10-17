@@ -8,12 +8,12 @@
 // TODO: tmp code
 class ConnectionPool : public IConnectionPool {
 public:
-    std::shared_ptr<IConnection> CreateConnection(std::string id, std::string ip, uint16_t port) {
-        auto connection = ::CreateConnection(ip, port);
-        pool_.insert({id, connection});
-        return connection;
+
+    void AddConnection(std::string id, std::shared_ptr<IConnection> conn) {
+        pool_.insert({id, conn});
     }
 
+private:
     std::map<std::string, std::shared_ptr<IConnection>> pool_;
 };
 
