@@ -10,15 +10,13 @@ set (discovery_sources
 
 target_sources(chatik_core PRIVATE
 	${discovery_sources}
-	network.cpp
 	server.cpp
-	client.cpp
-	client.h
+	connection.cpp
+	connection.h
 	utils.cpp
 	engine.cpp
 	message.h
 	include/utils.h
-	include/network.h
 	include/discovery_service.h
 	include/engine.h
 )
@@ -27,4 +25,5 @@ target_include_directories(chatik_core PUBLIC "include")
 
 target_compile_definitions(chatik_core PRIVATE _WIN32_WINNT=0x0601)
 
-target_link_libraries(chatik_core PRIVATE ${CONAN_LIBS})
+# TODO: make more specific choose of public
+target_link_libraries(chatik_core PUBLIC ${CONAN_LIBS})

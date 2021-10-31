@@ -1,30 +1,20 @@
 #include "engine.h"
 #include "discovery_service.h"
-#include "network.h"
 #include "utils.h"
-#include "client.h"
+#include "server.h"
 
 #include <fmt/format.h>
 #include <boost/asio.hpp>
+#include "spdlog/spdlog.h"
+#include <thread>
 
 #undef SendMessage
 
 namespace net = boost::asio;
 
-class Engine : public IEngine{
+class Engine : public IEngine {
 public:
     Engine() {
-        connection_pool_ = CreateConnectionPool();
-        discovery_service_ = CreateDiscoveryService(io_context_);
-
-        discovery_service_->OnNewEndpoint([this](std::string id, Endpoint ep) {
-            if (id == own_cid_) {
-                return;
-            }
-            auto connection = ::CreateConnection(ep.ip, ep.port, io_context_);
-            connection_pool_->AddConnection(id, connection);
-            connection->SendMesasge(fmt::format("Hello from {}!", own_cid_));
-        });
 
     }
 
@@ -32,11 +22,17 @@ public:
         return {};
     }
     
-    void SendMessage(std::string meg, std::string_view to_cid) override {
+    void SendMessage(std::string msg, std::string_view to_cid) override {
+        // TODO: error handling
+        server_->Deliver(msg, to_cid);
+        spdlog::debug("Send message to {}", to_cid);
+
+        // spdlog::warn("Trying to send message [{}] to {}, but connection is down", msg, to_cid);
     }
 
     void OnConnectionRequest(std::function<void(std::string_view cid)> cb) override {
     }
+
     void SetSelfInfo(std::string cid, std::string name) override {
         own_cid_ = cid;
         own_name_ = name;
@@ -50,15 +46,23 @@ private:
 
         server_ = std::make_unique<Server>(io_context_);
 
+        discovery_service_ = CreateDiscoveryService(io_context_);
         discovery_service_->SetBroadcastData(
             BroadcastData{.id = own_cid_, .ep{.ip = local_ips.front(), .port = server_->GetPort()}});
+
+        discovery_service_->OnNewEndpoint([this](std::string id, Endpoint ep) {
+            if (id == own_cid_) {
+                return;
+            }
+            server_->MakeConnectionTo(ep.ip, ep.port, id);
+            server_->Deliver(fmt::format("Hello from {}!", own_cid_), id);
+        });
 
         thread_ = std::jthread{[this]{ io_context_.run(); }};
 
     }
 
 private:
-    std::shared_ptr<IConnectionPool> connection_pool_;
     std::shared_ptr<IDiscovery> discovery_service_;
     std::unique_ptr<Server> server_;
 

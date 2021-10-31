@@ -1,13 +1,15 @@
-#include <spdlog/spdlog.h>
+#include "connection.h"
+#include "message.h"
 
+#include <spdlog/spdlog.h>
 #include <boost/asio.hpp>
+
 #include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <thread>
+#include <optional>
 
-#include "message.h"
-#include "network.h"
 
 using boost::asio::ip::tcp;
 
@@ -15,11 +17,38 @@ namespace net = boost::asio;
 
 typedef std::deque<Packet> chat_message_queue;
 
+class ConnectionPool : public IConnectionPool {
+public:
+
+    void AddConnection(std::string id, std::shared_ptr<IConnection> conn) override {
+        pool_.insert({id, conn});
+    }
+
+    std::shared_ptr<IConnection> GetConnection(std::string_view id) override {
+        if (auto it = pool_.find(id); it != pool_.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+private:
+    std::map<std::string, std::shared_ptr<IConnection>, std::less<>> pool_;
+};
+
+std::shared_ptr<IConnectionPool> CreateConnectionPool() {
+    return std::make_shared<ConnectionPool>();
+}
+
 class chat_client {
 public:
     chat_client(boost::asio::io_context& io_context, const tcp::resolver::results_type& endpoints)
         : io_context_(io_context), socket_(io_context), timer_(socket_.get_executor()) {
         do_connect(endpoints);
+    }
+
+    chat_client(net::io_context& io_context, net::ip::tcp::socket socket)
+        : io_context_(io_context), socket_(std::move(socket)), timer_(socket_.get_executor()) {
+        co_spawn(socket_.get_executor(), [this] { return Reader(); }, net::detached);
     }
 
     void write(const MessagesReply& msg) {
@@ -138,7 +167,7 @@ private:
     }
 
 private:
-    boost::asio::io_context& io_context_;
+    net::io_context& io_context_;
     tcp::socket socket_;
     Packet read_msg_;
     net::steady_timer timer_;
@@ -154,11 +183,19 @@ public:
         spdlog::debug("Create new connection to {}:{}", ip, port);
     }
 
+    Connection(net::io_context& io_context, net::ip::tcp::socket socket) 
+        : io_context_(io_context)
+    {
+        spdlog::debug("Create from connection to {}:{}", socket.remote_endpoint().address().to_string(), 
+                socket.remote_endpoint().port());
+        client_.emplace(io_context_, std::move(socket));
+    }
+
     ~Connection() {
         client_->close();
     }
 
-    void SendMesasge(std::string msg) override {
+    void SendMessage(std::string msg) override {
         client_->write(MessagesReply{msg});
     }
 
@@ -169,4 +206,8 @@ private:
 
 std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context) {
     return std::make_shared<Connection>(std::move(ip), port, io_context);
+}
+
+std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket) {
+    return std::make_shared<Connection>(io_context, std::move(socket));
 }

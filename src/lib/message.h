@@ -1,16 +1,27 @@
 #pragma once
 
-//#include <boost/pfr.hpp>
+#pragma GCC diagnostic push
+// implicit capture of ‘this’ via ‘[=]’ is deprecated in C++20
+#pragma GCC diagnostic ignored "-Wdeprecated"
+
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/memory.hpp>
 #include <cereal/types/unordered_map.hpp>
 #include <cereal/archives/json.hpp>
 
+#pragma GCC diagnostic pop
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-enum class MsgType : uint16_t { user_meta_request, user_meta_reply, new_messages, messages_request, messages_reply };
+enum class MsgType : uint16_t { 
+    user_meta_request, 
+    user_meta_reply, 
+    new_messages, 
+    messages_request, 
+    messages_reply 
+};
 
 struct Header {
     MsgType type;

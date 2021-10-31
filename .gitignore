@@ -1,2 +1,4 @@
 out/
+build/
 .vs/
+compile_commands.json

@@ -5,6 +5,7 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
+#include <chrono>
 #include <iostream>
 #include <string>
 
@@ -24,6 +25,7 @@ int main(int argc, char* argv[]) {
     auto engine = CreateEngine();
     engine->SetSelfInfo(uuid, name);
 
-    while (true)
-        ;
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
 }
