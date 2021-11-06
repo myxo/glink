@@ -7,6 +7,7 @@
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/memory.hpp>
 #include <cereal/types/unordered_map.hpp>
+#include <cereal/types/vector.hpp>
 #include <cereal/archives/json.hpp>
 
 #pragma GCC diagnostic pop
@@ -28,6 +29,31 @@ struct Header {
     uint16_t body_size;
 };
 
+// Struct for request meta after connection is established
+struct UserMetaRequest {
+    std::string from_cid;
+
+    static constexpr MsgType type = MsgType::user_meta_request;
+
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(CEREAL_NVP(from_cid));
+    }
+};
+
+struct UserMetaReply {
+    std::string client_cid;
+    std::string name;
+    std::vector<std::string> rooms_cid;
+
+    static constexpr MsgType type = MsgType::user_meta_reply;
+
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(CEREAL_NVP(client_cid), CEREAL_NVP(name), CEREAL_NVP(rooms_cid));
+    }
+};
+
 struct MessagesReply {
     std::string chat_msg;
 
@@ -38,6 +64,17 @@ struct MessagesReply {
         ar(CEREAL_NVP(chat_msg));
     }
 };
+
+template<typename T>
+auto DeserializePacket(std::string const& payload) {
+    std::stringstream is(payload);
+    T data_new;
+    {
+        cereal::JSONInputArchive archive_in(is);
+        archive_in(data_new);
+    }
+    return data_new;
+}
 
 // TODO: different classes for buffer and parsed message?
 // TODO: make single operation for reading message via asio

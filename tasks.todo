@@ -1,10 +1,21 @@
-☐ Handshake with metadata packet (name at first)
-☐ Make db with id, name, etc.
-☐ Simple TUI
-☐ Make single operation asio "Read message", "Write message"
-☐ Use coroutine
-☐ Connection pool
-✔ Discovery module prototype @done (9/26/2021, 3:08:19 PM)
-☐ Single thread pool
-☐ spdlog: save logger instead of spdlog::get ?
-✔ spdlog @done (9/25/2021, 5:26:04 PM)
+[ ] Make DB interface
+[ ] Make sqlite (?) db with id, name, messages etc.
+[ ] Use actor framework (sobjectizer?)
+[ ] Simple TUI
+[ ] Make single operation asio "Read message", "Write message"
+[ ] spdlog: save logger instead of spdlog::get ?
+[ ] Make announce / get pattern
+[ ] Unit tests
+[ ] Encription
+[ ] GUI (flutter?)
+[ ] Non local network routing
+[ ] Docker (shadow ?) tests
+
+[ ] Correct close app by Ctrl-C
+[ ] Handshake with metadata packet (name at first)
+
+[v] Single thread pool
+[v] Use coroutine
+[v] Connection pool prototype
+[v] Discovery module prototype @done (9/26/2021, 3:08:19 PM)
+[v] spdlog @done (9/25/2021, 5:26:04 PM)
