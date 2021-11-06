@@ -1,5 +1,6 @@
 #include "connection.h"
 #include "message.h"
+#include "utils.h"
 
 #include <spdlog/spdlog.h>
 #include <boost/asio.hpp>
@@ -39,85 +40,102 @@ std::shared_ptr<IConnectionPool> CreateConnectionPool() {
     return std::make_shared<ConnectionPool>();
 }
 
-class chat_client {
+class chat_client : public std::enable_shared_from_this<chat_client> {
 public:
-    chat_client(boost::asio::io_context& io_context, const tcp::resolver::results_type& endpoints)
-        : io_context_(io_context), socket_(io_context), timer_(socket_.get_executor()) {
-        do_connect(endpoints);
+    chat_client(boost::asio::io_context& io_context, const tcp::resolver::results_type& endpoints, std::string cid)
+        : io_context_(io_context)
+        , socket_(io_context)
+        , timer_(socket_.get_executor()) 
+        , own_cid_(cid)
+    {
+        spdlog::debug("chat_client ctor with endpoints");
+        co_spawn(io_context_, [this, eps = endpoints] { 
+                return Connect(eps); 
+        }, net::detached);
     }
 
-    chat_client(net::io_context& io_context, net::ip::tcp::socket socket)
-        : io_context_(io_context), socket_(std::move(socket)), timer_(socket_.get_executor()) {
-        co_spawn(socket_.get_executor(), [this] { return Reader(); }, net::detached);
+    chat_client(net::io_context& io_context, net::ip::tcp::socket socket, std::string cid)
+        : io_context_(io_context)
+          , socket_(std::move(socket))
+          , timer_(socket_.get_executor()) 
+          , own_cid_(cid)
+    {
+        spdlog::debug("chat_client ctor with socket");
+        co_spawn(socket_.get_executor(), [this] { 
+                return Reader(); 
+        }, net::detached);
     }
 
     void write(const MessagesReply& msg) {
-        boost::asio::post(io_context_, [this, msg]() mutable {
-            bool write_in_progress = !write_msgs_.empty();
-            write_msgs_.push_back(std::move(msg));
+        boost::asio::post(io_context_, [this_ = shared_from_this(), msg = msg]() mutable {
+            bool write_in_progress = !this_->write_msgs_.empty();
+            this_->write_msgs_.push_back(std::move(msg));
             if (!write_in_progress) {
-                timer_.cancel_one();
+                this_->timer_.cancel_one();
             }
         });
     }
 
     void close() {
-        boost::asio::post(io_context_, [this]() { socket_.close(); });
+        // TODO: wait until all handlers is executed?
+        spdlog::info("Close socket: {}", GetEndpointAsStr(socket_));
+        boost::asio::post(io_context_, [this_ = shared_from_this()]() { 
+            if (this_->socket_.is_open())
+                this_->socket_.close(); 
+        });
         timer_.cancel_one();
     }
 
 private:
-    void do_connect(const tcp::resolver::results_type& endpoints) {
-        boost::asio::async_connect(socket_, endpoints, [this](boost::system::error_code ec, tcp::endpoint) {
-            if (!ec) {
-                co_spawn(
-                    socket_.get_executor(), [this] { return Reader(); }, net::detached);
+    net::awaitable<void> Connect(const tcp::resolver::results_type& endpoints) {
+        co_await net::async_connect(socket_, endpoints, net::use_awaitable);
 
-                co_spawn(
-                    socket_.get_executor(), [this] { return Writer(); }, net::detached);
-            }
-        });
+        // Handshake
+        Packet read_msg;
+        std::size_t length = co_await net::async_read(
+            socket_, boost::asio::buffer(read_msg.GetHeaderAsString(), Packet::kHeaderSize), net::use_awaitable);
+
+        if (!read_msg.decode_header()) {
+            spdlog::info("[MakeConnectionTo] error on reading header, cannot decode. Endpoint {}", 
+                    GetEndpointAsStr(socket_));
+            co_return;
+        }
+        spdlog::trace("[MakeConnectionTo] read header ({} bytes), now async read body ({} bytes)", length,
+                      read_msg.GetBodySize());
+
+        std::string payload;
+        payload.resize(read_msg.GetBodySize());
+        length = co_await net::async_read(socket_, net::buffer(payload, read_msg.GetBodySize()),
+                                          net::use_awaitable);
+
+        // TODO: check type enum
+        try {
+            auto reply = DeserializePacket<UserMetaRequest>(payload);
+            // spdlog::debug("get meta. cid: {}, name: {}", reply.client_cid, reply.name);
+        } catch (cereal::Exception const& e) { 
+            // TODO: do not leak cereal
+            // TODO: do not use warn?
+            spdlog::warn("[MakeConnectionTo]: error while parse of UserMetaReply: {}\nPayload is {}", e.what(), payload);
+            co_return;
+        }
+
+        Packet send_pkg(UserMetaReply{own_cid_, "test_name"});
+        // Packet send_pkg(UserMetaReply{cid_, "test_name"});
+        co_await net::async_write(socket_,
+                                  net::buffer(send_pkg.GetHeaderAsString(), Packet::kHeaderSize),
+                                  net::use_awaitable);
+        co_await net::async_write(
+            socket_, net::buffer(send_pkg.GetPayload(), send_pkg.GetBodySize()), net::use_awaitable);
+        
+        // Start reading and writing actual messages
+        co_spawn(
+            socket_.get_executor(), [this_ = shared_from_this()] { return this_->Reader(); }, net::detached);
+
+        co_spawn(
+            socket_.get_executor(), [this_ = shared_from_this()] { return this_->Writer(); }, net::detached);
+
+        write(MessagesReply{"hello from " + own_cid_});
     }
-
-    // void do_read_header() {
-    //    boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.data(), Packet::kHeaderSize),
-    //                            [this](boost::system::error_code ec, std::size_t /*length*/) {
-    //                                if (!ec && read_msg_.decode_header()) {
-    //                                    do_read_body();
-    //                                } else {
-    //                                    socket_.close();
-    //                                }
-    //                            });
-    //}
-
-    // void do_read_body() {
-    //    boost::asio::async_read(socket_, boost::asio::buffer(read_msg_.body(), read_msg_.body_length()),
-    //                            [this](boost::system::error_code ec, std::size_t /*length*/) {
-    //                                if (!ec) {
-    //                                    //std::cout.write(read_msg_.body(), read_msg_.body_length());
-    //                                    //std::cout << "\n";
-    //                                    do_read_header();
-    //                                } else {
-    //                                    socket_.close();
-    //                                }
-    //                            });
-    //}
-
-    // void do_write() {
-    //    boost::asio::async_write(socket_,
-    //                             boost::asio::buffer(write_msgs_.front().data(), write_msgs_.front().get_length()),
-    //                             [this](boost::system::error_code ec, std::size_t length) {
-    //                                spdlog::trace("Connection: write complete, wrote {} bytes", length);
-    //                                 if (!ec) {
-    //                                     write_msgs_.pop_front();
-    //                                     if (!write_msgs_.empty()) {
-    //                                         do_write();
-    //                                     }
-    //                                 } else {
-    //                                     socket_.close();
-    //                                 }
-    //                             });
-    //}
 
     net::awaitable<void> Reader() try {
         while (true) {
@@ -172,26 +190,28 @@ private:
     Packet read_msg_;
     net::steady_timer timer_;
     chat_message_queue write_msgs_;
+    std::string own_cid_;
 };
 
 class Connection : public IConnection {
 public:
-    Connection(std::string ip, uint16_t port, net::io_context& io_context) : io_context_(io_context) {
+    Connection(std::string ip, uint16_t port, net::io_context& io_context, std::string from_cid) : io_context_(io_context) {
         tcp::resolver resolver(io_context_);
         auto endpoints = resolver.resolve(ip.c_str(), std::to_string(port));
-        client_.emplace(io_context_, endpoints);
+        client_ = std::make_shared<chat_client>(io_context_, endpoints, from_cid);
         spdlog::debug("Create new connection to {}:{}", ip, port);
     }
 
-    Connection(net::io_context& io_context, net::ip::tcp::socket socket) 
+    Connection(net::io_context& io_context, net::ip::tcp::socket socket, std::string from_cid) 
         : io_context_(io_context)
     {
         spdlog::debug("Create from connection to {}:{}", socket.remote_endpoint().address().to_string(), 
                 socket.remote_endpoint().port());
-        client_.emplace(io_context_, std::move(socket));
+        client_ = std::make_shared<chat_client>(io_context_, std::move(socket), from_cid);
     }
 
     ~Connection() {
+        spdlog::debug("Close connection");
         client_->close();
     }
 
@@ -201,13 +221,13 @@ public:
 
 private:
     net::io_context& io_context_;
-    std::optional<chat_client> client_;
+    std::shared_ptr<chat_client> client_;
 };
 
-std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context) {
-    return std::make_shared<Connection>(std::move(ip), port, io_context);
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context, std::string from_cid) {
+    return std::make_shared<Connection>(std::move(ip), port, io_context, from_cid);
 }
 
-std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket) {
-    return std::make_shared<Connection>(io_context, std::move(socket));
+std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket, std::string from_cid) {
+    return std::make_shared<Connection>(io_context, std::move(socket), from_cid);
 }

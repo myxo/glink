@@ -10,7 +10,7 @@ class chat_server;
 
 class Server {
 public:
-    Server(boost::asio::io_context& io_context);
+    Server(boost::asio::io_context& io_context, std::string cid);
     ~Server();
 
     void Deliver(std::string msg, std::string_view to_cid);
@@ -22,4 +22,5 @@ private:
     boost::asio::io_context& io_context_;
     std::unique_ptr<chat_server> impl_;
     boost::asio::ip::tcp::endpoint endpoint_;
+    std::string own_cid_;
 };

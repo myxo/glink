@@ -44,7 +44,7 @@ private:
     void InitConnection() {
         auto local_ips = GetLocalInterfacesIp();
 
-        server_ = std::make_unique<Server>(io_context_);
+        server_ = std::make_unique<Server>(io_context_, own_cid_);
 
         discovery_service_ = CreateDiscoveryService(io_context_);
         discovery_service_->SetBroadcastData(
@@ -54,8 +54,13 @@ private:
             if (id == own_cid_) {
                 return;
             }
+            spdlog::info("Found new endpoint: {}:{}, id:{}", ep.ip, ep.port, id);
+            // Options:
+            // 1. Make this coroutine
+            // 2. Use task based library
+            // 3. Use actor / mesaging model
             server_->MakeConnectionTo(ep.ip, ep.port, id);
-            server_->Deliver(fmt::format("Hello from {}!", own_cid_), id);
+            // server_->Deliver(fmt::format("Hello from {}!", own_cid_), id);
         });
 
         thread_ = std::jthread{[this]{ io_context_.run(); }};

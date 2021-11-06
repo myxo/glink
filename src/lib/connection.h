@@ -20,5 +20,5 @@ public:
 };
 
 std::shared_ptr<IConnectionPool> CreateConnectionPool();
-std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context);
-std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket);
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context, std::string from_cid);
+std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket, std::string from_cid);
