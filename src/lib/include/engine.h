@@ -5,6 +5,9 @@
 #include <functional>
 #include <memory>
 
+#include <boost/asio.hpp>
+#include "boost/asio/io_context.hpp"
+
 class IEngine {
 public:
     virtual std::vector<std::string> GetKnownCid() = 0;
@@ -15,4 +18,4 @@ public:
     virtual void SetSelfInfo(std::string cid, std::string name) = 0; // TODO: different interface
 };
 
-std::shared_ptr<IEngine> CreateEngine();
+std::shared_ptr<IEngine> CreateEngine(boost::asio::io_context& io_context);

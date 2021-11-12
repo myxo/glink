@@ -1,6 +1,5 @@
 [ ] Make DB interface
 [ ] Make sqlite (?) db with id, name, messages etc.
-[ ] Use actor framework (sobjectizer?)
 [ ] Simple TUI
 [ ] Make single operation asio "Read message", "Write message"
 [ ] spdlog: save logger instead of spdlog::get ?
@@ -11,9 +10,10 @@
 [ ] Non local network routing
 [ ] Docker (shadow ?) tests
 
-[ ] Correct close app by Ctrl-C
-[ ] Handshake with metadata packet (name at first)
+[ ] Use actor framework (sobjectizer?)
 
+[v] Correct close app by Ctrl-C
+[v] Handshake with metadata packet (name at first)
 [v] Single thread pool
 [v] Use coroutine
 [v] Connection pool prototype

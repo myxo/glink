@@ -14,7 +14,7 @@ namespace net = boost::asio;
 
 class Engine : public IEngine {
 public:
-    Engine() {
+    Engine(net::io_context& io_context) : io_context_(io_context) {
 
     }
 
@@ -62,21 +62,17 @@ private:
             server_->MakeConnectionTo(ep.ip, ep.port, id);
             // server_->Deliver(fmt::format("Hello from {}!", own_cid_), id);
         });
-
-        thread_ = std::jthread{[this]{ io_context_.run(); }};
-
     }
 
 private:
     std::shared_ptr<IDiscovery> discovery_service_;
     std::unique_ptr<Server> server_;
 
-    net::io_context io_context_;
-    std::jthread thread_;
+    net::io_context& io_context_;
     std::string own_cid_;
     std::string own_name_;
 };
 
-std::shared_ptr<IEngine> CreateEngine() {
-    return std::make_shared<Engine>();
+std::shared_ptr<IEngine> CreateEngine(net::io_context& io_context) {
+    return std::make_shared<Engine>(io_context);
 }
