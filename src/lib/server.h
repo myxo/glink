@@ -1,5 +1,7 @@
 #pragma once
 
+#include "message_queue.h"
+
 #include <bits/stdint-uintn.h>
 #include <boost/asio.hpp>
 #include "boost/asio/ip/tcp.hpp"
@@ -10,7 +12,7 @@ class chat_server;
 
 class Server {
 public:
-    Server(boost::asio::io_context& io_context, std::string cid);
+    Server(boost::asio::io_context& io_context, MessageQueue& mq, std::string cid);
     ~Server();
 
     void Deliver(std::string msg, std::string_view to_cid);
@@ -23,4 +25,5 @@ private:
     std::unique_ptr<chat_server> impl_;
     boost::asio::ip::tcp::endpoint endpoint_;
     std::string own_cid_;
+    MessageQueue& mq_;
 };

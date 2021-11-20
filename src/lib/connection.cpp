@@ -1,5 +1,6 @@
 #include "connection.h"
 #include "message.h"
+#include "message_queue.h"
 #include "utils.h"
 
 #include <spdlog/spdlog.h>
@@ -42,10 +43,11 @@ std::shared_ptr<IConnectionPool> CreateConnectionPool() {
 
 class chat_client : public std::enable_shared_from_this<chat_client> {
 public:
-    chat_client(boost::asio::io_context& io_context, const tcp::resolver::results_type& endpoints, std::string cid)
+    chat_client(boost::asio::io_context& io_context, MessageQueue& mq, const tcp::resolver::results_type& endpoints, std::string cid)
         : io_context_(io_context)
         , socket_(io_context)
         , timer_(socket_.get_executor()) 
+        , mq_(mq)
         , own_cid_(cid)
     {
         spdlog::debug("chat_client ctor with endpoints");
@@ -54,10 +56,11 @@ public:
         }, net::detached);
     }
 
-    chat_client(net::io_context& io_context, net::ip::tcp::socket socket, std::string cid)
+    chat_client(net::io_context& io_context, MessageQueue& mq, net::ip::tcp::socket socket, std::string cid)
         : io_context_(io_context)
           , socket_(std::move(socket))
           , timer_(socket_.get_executor()) 
+          , mq_(mq)
           , own_cid_(cid)
     {
         spdlog::debug("chat_client ctor with socket");
@@ -155,10 +158,15 @@ private:
             length = co_await net::async_read(socket_, net::buffer(payload, read_msg.GetBodySize()),
                                               net::use_awaitable);
 
-            read_msg.GetPayloadMut() = payload;
-
             spdlog::debug("Client: finish read body ({} bytes): {}", length, read_msg.GetBodySize());
-            spdlog::get("chat_msg")->info("{}", read_msg.GetPayload());
+            try {
+                mq_.Send<MessagesReply>(DeserializePacket<MessagesReply>(payload));
+            } catch (cereal::Exception const& e) { 
+                // TODO: do not leak cereal
+                // TODO: do not use warn?
+                spdlog::warn("[Connection::Reader]: error while parse of MessagesReply: {}\nPayload is {}", e.what(), payload);
+            }
+
         }
     } catch (std::exception& e) {
         spdlog::warn("Exception in Reader: {}", e.what());
@@ -189,25 +197,30 @@ private:
     tcp::socket socket_;
     Packet read_msg_;
     net::steady_timer timer_;
+    MessageQueue& mq_;
     chat_message_queue write_msgs_;
     std::string own_cid_;
 };
 
 class Connection : public IConnection {
 public:
-    Connection(std::string ip, uint16_t port, net::io_context& io_context, std::string from_cid) : io_context_(io_context) {
+    Connection(std::string ip, uint16_t port, net::io_context& io_context, MessageQueue& mq, std::string from_cid) 
+        : io_context_(io_context)
+          , mq_(mq)
+    {
         tcp::resolver resolver(io_context_);
         auto endpoints = resolver.resolve(ip.c_str(), std::to_string(port));
-        client_ = std::make_shared<chat_client>(io_context_, endpoints, from_cid);
+        client_ = std::make_shared<chat_client>(io_context_, mq_, endpoints, from_cid);
         spdlog::debug("Create new connection to {}:{}", ip, port);
     }
 
-    Connection(net::io_context& io_context, net::ip::tcp::socket socket, std::string from_cid) 
+    Connection(net::io_context& io_context, MessageQueue& mq, net::ip::tcp::socket socket, std::string from_cid) 
         : io_context_(io_context)
+          , mq_(mq)
     {
         spdlog::debug("Create from connection to {}:{}", socket.remote_endpoint().address().to_string(), 
                 socket.remote_endpoint().port());
-        client_ = std::make_shared<chat_client>(io_context_, std::move(socket), from_cid);
+        client_ = std::make_shared<chat_client>(io_context_, mq_, std::move(socket), from_cid);
     }
 
     ~Connection() {
@@ -222,12 +235,13 @@ public:
 private:
     net::io_context& io_context_;
     std::shared_ptr<chat_client> client_;
+    MessageQueue& mq_;
 };
 
-std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context, std::string from_cid) {
-    return std::make_shared<Connection>(std::move(ip), port, io_context, from_cid);
+std::shared_ptr<IConnection> CreateConnection(std::string ip, uint16_t port, net::io_context& io_context, MessageQueue& mq, std::string from_cid) {
+    return std::make_shared<Connection>(std::move(ip), port, io_context, mq, from_cid);
 }
 
-std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, net::ip::tcp::socket socket, std::string from_cid) {
-    return std::make_shared<Connection>(io_context, std::move(socket), from_cid);
+std::shared_ptr<IConnection> CreateConnection(net::io_context& io_context, MessageQueue& mq, net::ip::tcp::socket socket, std::string from_cid) {
+    return std::make_shared<Connection>(io_context, mq, std::move(socket), from_cid);
 }
