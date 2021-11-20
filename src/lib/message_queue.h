@@ -8,10 +8,14 @@
 #include <typeindex>
 #include <mutex>
 
-#include <iostream>
+#include <spdlog/spdlog.h>
 
 class MessageQueue {
 public:
+    MessageQueue() = default;
+    MessageQueue(MessageQueue const&) = delete;
+    MessageQueue& operator=(MessageQueue const&) = delete;
+
     template<typename T, typename ...Args>
     void Send(Args... args) {
         std::lock_guard lock{mutex_};
@@ -50,6 +54,7 @@ public:
             in_scheduler_ = false;
             std::swap(queue_, local_queue);
         }
+        spdlog::info("MEssageQueue, local_queue size = {}", local_queue.size());
         for (auto const& msg : local_queue) {
             std::lock_guard lock{mutex_}; // TODO: get rid off
             auto [it, end] = subscribers_.equal_range(msg.type());
@@ -69,7 +74,7 @@ private:
         std::function<void(std::any const&)> cb;
     };
 
-    std::mutex mutex_;
+    std::recursive_mutex mutex_;
     std::vector<std::any> queue_;
     std::multimap<std::type_index, SubInfo> subscribers_;
     std::atomic_int token_count_{0};

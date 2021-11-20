@@ -2,6 +2,7 @@
 #include "discovery_service.h"
 #include "utils.h"
 #include "server.h"
+#include "message.h"
 
 #include <fmt/format.h>
 #include <boost/asio.hpp>
@@ -12,9 +13,28 @@
 
 namespace net = boost::asio;
 
+class ChatPrinter {
+public:
+    ChatPrinter(MessageQueue& mq) : mq_(mq) {
+        mq_.Subscribe<MessagesReply>([this] (MessagesReply const& msg) { OnChatMessage(msg); });
+    }
+
+    void OnChatMessage(MessagesReply const& msg) {
+        spdlog::get("chat_msg")->info("{}", msg.chat_msg);
+    }
+
+
+private:
+    MessageQueue& mq_;
+};
+
 class Engine : public IEngine {
 public:
-    Engine(net::io_context& io_context) : io_context_(io_context) {
+    Engine(net::io_context& io_context) 
+        : io_context_(io_context)
+        , chat_printer_(mq_) 
+    {
+        mq_.SetSchedulerCallback([this] (auto callback) { net::post(io_context_, std::move(callback)); });
 
     }
 
@@ -44,7 +64,7 @@ private:
     void InitConnection() {
         auto local_ips = GetLocalInterfacesIp();
 
-        server_ = std::make_unique<Server>(io_context_, own_cid_);
+        server_ = std::make_unique<Server>(io_context_, mq_, own_cid_);
 
         discovery_service_ = CreateDiscoveryService(io_context_);
         discovery_service_->SetBroadcastData(
@@ -71,6 +91,8 @@ private:
     net::io_context& io_context_;
     std::string own_cid_;
     std::string own_name_;
+    MessageQueue mq_;
+    ChatPrinter chat_printer_;
 };
 
 std::shared_ptr<IEngine> CreateEngine(net::io_context& io_context) {
