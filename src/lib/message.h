@@ -1,5 +1,7 @@
 #pragma once
 
+#include "message_queue.h"
+
 #pragma GCC diagnostic push
 // implicit capture of ‘this’ via ‘[=]’ is deprecated in C++20
 #pragma GCC diagnostic ignored "-Wdeprecated"
@@ -54,6 +56,20 @@ struct UserMetaReply {
     }
 };
 
+struct MessageRequest {
+    std::string from_cid;
+    std::string cid;
+    uint64_t from_index{0};
+    // uuid last_msg_hash
+
+    static constexpr MsgType type = MsgType::messages_request;
+
+    template <class Archive>
+    void serialize(Archive& ar) {
+        ar(CEREAL_NVP(cid), CEREAL_NVP(from_index));
+    }
+};
+
 struct MessagesReply {
     std::string chat_msg;
 
@@ -63,6 +79,11 @@ struct MessagesReply {
     void serialize(Archive& ar) {
         ar(CEREAL_NVP(chat_msg));
     }
+};
+
+struct NewConnection {
+    std::string cid;
+    // ... endpoint
 };
 
 template<typename T>
@@ -132,6 +153,10 @@ public:
         return true;
     }
 
+    Header const& GetHeader() {
+        return header_;
+    }
+
 private:
     void encode_header() {
         std::memcpy(header_str_, reinterpret_cast<void*>(&header_), sizeof(Header));  // OMG
@@ -142,3 +167,22 @@ private:
     char header_str_[kHeaderSize];
     std::string payload_;
 };
+
+// TODO: write payload to packet!?
+inline void PutInMq(MessageQueue &mq, Header const& header, std::string const& payload) {
+    try {
+        switch (header.type) {
+            case MsgType::user_meta_request:    mq.Send<UserMetaRequest>(DeserializePacket<UserMetaRequest>(payload)); break;
+            case MsgType::user_meta_reply: mq.Send<UserMetaReply>(DeserializePacket<UserMetaReply>(payload)); break;
+            case MsgType::new_messages: break;
+            case MsgType::messages_request: mq.Send<MessageRequest>(DeserializePacket<MessageRequest>(payload)); break;
+            case MsgType::messages_reply: mq.Send<MessagesReply>(DeserializePacket<MessagesReply>(payload)); break;
+        }
+    } catch (cereal::Exception const& e) { 
+        // TODO: do not leak cereal
+        // TODO: do not use warn?
+        spdlog::warn("[PuInMq]: error while parse packet: {}\nPayload is {}", e.what(), payload);
+    }
+
+}
+

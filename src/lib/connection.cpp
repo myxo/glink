@@ -159,14 +159,7 @@ private:
                                               net::use_awaitable);
 
             spdlog::debug("Client: finish read body ({} bytes): {}", length, read_msg.GetBodySize());
-            try {
-                mq_.Send<MessagesReply>(DeserializePacket<MessagesReply>(payload));
-            } catch (cereal::Exception const& e) { 
-                // TODO: do not leak cereal
-                // TODO: do not use warn?
-                spdlog::warn("[Connection::Reader]: error while parse of MessagesReply: {}\nPayload is {}", e.what(), payload);
-            }
-
+            PutInMq(mq_, read_msg.GetHeader(), payload);
         }
     } catch (std::exception& e) {
         spdlog::warn("Exception in Reader: {}", e.what());

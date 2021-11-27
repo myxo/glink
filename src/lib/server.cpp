@@ -73,6 +73,7 @@ public:
                     spdlog::debug("get meta. cid: {}, name: {}", reply.client_cid, reply.name);
 
                     connection_pool_->AddConnection(reply.client_cid, CreateConnection(io_context_, mq_, std::move(socket), cid_));
+                    mq_.Send<NewConnection>(reply.client_cid);
                 } catch (cereal::Exception const& e) { 
                     // TODO: do not leak cereal
                     // TODO: do not use warn?

@@ -18,8 +18,10 @@ public:
 
     template<typename T, typename ...Args>
     void Send(Args... args) {
+        std::any msg = std::make_any<T>(args...);
+        spdlog::debug("MQ <--- {}", msg.type().name());
         std::lock_guard lock{mutex_};
-        queue_.emplace_back(std::make_any<T>(args...));
+        queue_.push_back(std::move(msg));
         if (post_to_schedule_ && !in_scheduler_) {
             in_scheduler_ = true;
             // TODO: race condition on exit
@@ -54,11 +56,12 @@ public:
             in_scheduler_ = false;
             std::swap(queue_, local_queue);
         }
-        spdlog::info("MEssageQueue, local_queue size = {}", local_queue.size());
+        spdlog::trace("MessageQueue::ProcessAll, local_queue size = {}", local_queue.size());
         for (auto const& msg : local_queue) {
             std::lock_guard lock{mutex_}; // TODO: get rid off
             auto [it, end] = subscribers_.equal_range(msg.type());
             for (; it != end; ++it) {
+                spdlog::debug("MQ ---> {}", msg.type().name());
                 it->second.cb(msg);
             }
         }

@@ -15,6 +15,8 @@ target_sources(chatik_core PRIVATE
 	connection.h
 	utils.cpp
 	engine.cpp
+        database.cpp
+        database.h
 	message.h
 	include/utils.h
 	include/discovery_service.h

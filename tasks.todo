@@ -1,17 +1,27 @@
-[ ] Make DB interface
-[ ] Make sqlite (?) db with id, name, messages etc.
 [ ] Simple TUI
 [ ] Make single operation asio "Read message", "Write message"
 [ ] spdlog: save logger instead of spdlog::get ?
-[ ] Make announce / get pattern
 [ ] Unit tests
 [ ] Encription
 [ ] GUI (flutter?)
 [ ] Non local network routing
 [ ] Docker (shadow ?) tests
+[ ] Make exclusieve Send, so mq may move messages
+[ ] Get rid of boilerplate in PuInMq
+[ ] Remove all race conditions on app exit
 
-[ ] Use actor framework (sobjectizer?)
+# Nearest
+[ ] Make sqlite (?) db with id, name, messages etc.
+[ ] Remove cereal boilerplate (boost::pfr ?)
+[ ] Send more than 1 messages at time
+[ ] Cid vs Uid
 
+# Current
+[ ] Make announce / get pattern
+[ ] Make DB interface
+
+# Done
+[x] Use actor framework (sobjectizer?)
 [v] Correct close app by Ctrl-C
 [v] Handshake with metadata packet (name at first)
 [v] Single thread pool

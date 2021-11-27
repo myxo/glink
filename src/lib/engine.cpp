@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "database.h"
 #include "discovery_service.h"
 #include "utils.h"
 #include "server.h"
@@ -9,7 +10,7 @@
 #include "spdlog/spdlog.h"
 #include <thread>
 
-#undef SendMessage
+#undef SendMessage // MSVC crap
 
 namespace net = boost::asio;
 
@@ -35,15 +36,30 @@ public:
         , chat_printer_(mq_) 
     {
         mq_.SetSchedulerCallback([this] (auto callback) { net::post(io_context_, std::move(callback)); });
+        
+        mq_.Subscribe<NewConnection>([this] (NewConnection const& conn) {
+            db_.AddCid({conn.cid});
+            SendMessage(fmt::format("Well, hello {}. My name is {}", conn.cid, own_cid_), conn.cid);
+        });
+
+        mq_.Subscribe<MessageRequest> ([this] (MessageRequest const& req) {
+            // TODO: more messages
+            auto msgs = db_.GetLastMessages(req.cid, 1);
+            if (msgs.empty()) {
+                return;
+            }
+            server_->Deliver(msgs.back().text, req.from_cid);
+        });
 
     }
 
     std::vector<std::string> GetKnownCid() override {
-        return {};
+        return db_.GetKnownCids();
     }
     
     void SendMessage(std::string msg, std::string_view to_cid) override {
         // TODO: error handling
+        db_.AddMessage(to_cid, {msg});
         server_->Deliver(msg, to_cid);
         spdlog::debug("Send message to {}", to_cid);
 
@@ -93,6 +109,7 @@ private:
     std::string own_name_;
     MessageQueue mq_;
     ChatPrinter chat_printer_;
+    Database db_;
 };
 
 std::shared_ptr<IEngine> CreateEngine(net::io_context& io_context) {
