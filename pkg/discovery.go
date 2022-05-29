@@ -44,6 +44,9 @@ func (d *Discovery) serve() {
 	}
 
 	l, err := net.ListenMulticastUDP("udp", nil, addr)
+	if err != nil {
+		log.Fatalln("Cannot listen multicast", err)
+	}
 	l.SetReadBuffer(maxDatagramSize)
 	for {
 		buffer := make([]byte, maxDatagramSize)

@@ -14,6 +14,7 @@ var connMap = &sync.Map{}
 type Server struct {
 	listener    net.Listener
 	connections []net.Conn
+	NewEvent    chan ChatMessage
 }
 
 func NewServer() (*Server, error) {
@@ -21,7 +22,7 @@ func NewServer() (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Cannot bind: %w", err)
 	}
-	server := Server{listener: listener}
+	server := Server{listener: listener, NewEvent: make(chan ChatMessage)}
 	//go server.acceptLoop()
 
 	return &server, nil
@@ -65,11 +66,11 @@ func (s *Server) AcceptLoop() {
 		log.Println("Accept connection from ", conn.RemoteAddr().String())
 
 		id := uuid.New().String()
-		go handleUserConnectoin(id, conn)
+		go handleUserConnectoin(id, conn, s.NewEvent)
 	}
 }
 
-func handleUserConnectoin(id string, c net.Conn) {
+func handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
 	connMap.Store(id, c)
 	defer func() {
 		c.Close()
@@ -97,14 +98,15 @@ func handleUserConnectoin(id string, c net.Conn) {
 			continue
 		}
 		chat_msg, err := DecodeMsg[ChatMessage](hdr, msg.Payload)
+		newEvent <- chat_msg
 		fmt.Printf("Message from %d: %s", chat_msg.FromId, chat_msg.Payload)
 
-		connMap.Range(func(key, value interface{}) bool {
-			if conn, ok := value.(net.Conn); ok {
-				conn.Write([]byte(chat_msg.Payload))
-			}
+		// connMap.Range(func(key, value interface{}) bool {
+		// 	if conn, ok := value.(net.Conn); ok {
+		// 		conn.Write([]byte(chat_msg.Payload))
+		// 	}
 
-			return true
-		})
+		// 	return true
+		// })
 	}
 }

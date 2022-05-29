@@ -10,6 +10,7 @@ type GlinkService struct {
 	discovery *Discovery
 	Server    *Server
 	OwnCid    string
+	NewMsg    chan ChatMessage
 }
 
 func NewGlinkService() *GlinkService {
@@ -26,7 +27,7 @@ func NewGlinkService() *GlinkService {
 	discovery := NewDiscovery(own_info)
 	discovery.Run()
 
-	return &GlinkService{discovery: discovery, Server: server, OwnCid: own_cid}
+	return &GlinkService{discovery: discovery, Server: server, OwnCid: own_cid, NewMsg: make(chan ChatMessage)}
 }
 
 func (*GlinkService) Stop() {
@@ -42,7 +43,10 @@ func (g *GlinkService) Launch() {
 			case new_node := <-g.discovery.NewNodes:
 				fmt.Println("New node: ", new_node)
 				g.Server.MakeNewConnectionTo(new_node.Endpoint)
+			case new_msg := <-g.Server.NewEvent:
+				g.NewMsg <- new_msg
 			}
+
 		}
 	}()
 }
