@@ -2,8 +2,9 @@ package glink
 
 import (
 	"fmt"
+
 	"github.com/google/uuid"
-	"log"
+	"github.com/juju/loggo"
 )
 
 type GlinkService struct {
@@ -11,23 +12,24 @@ type GlinkService struct {
 	Server    *Server
 	OwnCid    string
 	NewMsg    chan ChatMessage
+	log       *loggo.Logger
 }
 
-func NewGlinkService() *GlinkService {
-	server, err := NewServer()
+func NewGlinkService(log *loggo.Logger) *GlinkService {
+	server, err := NewServer(log)
 	if err != nil {
-		log.Fatalln(err)
+		log.Errorf("%w", err)
 	}
 	own_cid := uuid.New().String()
 	own_info := NodeAnnounce{Cid: own_cid, Name: "my_name", Endpoint: server.ListenerAddress()}
 
-	fmt.Println("Mine info: ", own_info)
+	log.Infof("Mine info: ", own_info)
 
 	go server.AcceptLoop()
 	discovery := NewDiscovery(own_info)
 	discovery.Run()
 
-	return &GlinkService{discovery: discovery, Server: server, OwnCid: own_cid, NewMsg: make(chan ChatMessage)}
+	return &GlinkService{discovery: discovery, Server: server, OwnCid: own_cid, NewMsg: make(chan ChatMessage), log: log}
 }
 
 func (*GlinkService) Stop() {

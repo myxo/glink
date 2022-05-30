@@ -2,11 +2,11 @@ package glink
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/juju/loggo"
 )
 
 var connMap = &sync.Map{}
@@ -15,14 +15,15 @@ type Server struct {
 	listener    net.Listener
 	connections []net.Conn
 	NewEvent    chan ChatMessage
+	log         *loggo.Logger
 }
 
-func NewServer() (*Server, error) {
+func NewServer(log *loggo.Logger) (*Server, error) {
 	listener, err := net.Listen("tcp", "localhost:0000")
 	if err != nil {
 		return nil, fmt.Errorf("Cannot bind: %w", err)
 	}
-	server := Server{listener: listener, NewEvent: make(chan ChatMessage)}
+	server := Server{listener: listener, NewEvent: make(chan ChatMessage), log: log}
 	//go server.acceptLoop()
 
 	return &server, nil
@@ -43,7 +44,7 @@ func (s *Server) MakeNewConnectionTo(address string) error {
 		return err
 	}
 
-	log.Println("Connected to ", c.RemoteAddr().String())
+	s.log.Infof("Connected to %s", c.RemoteAddr().String())
 
 	s.connections = append(s.connections, c)
 	return nil
@@ -63,7 +64,7 @@ func (s *Server) AcceptLoop() {
 			fmt.Println("Cannot accept connection: ", err)
 			continue
 		}
-		log.Println("Accept connection from ", conn.RemoteAddr().String())
+		s.log.Infof("Accept connection from %s", conn.RemoteAddr().String())
 
 		id := uuid.New().String()
 		go handleUserConnectoin(id, conn, s.NewEvent)
@@ -99,7 +100,7 @@ func handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
 		}
 		chat_msg, err := DecodeMsg[ChatMessage](hdr, msg.Payload)
 		newEvent <- chat_msg
-		fmt.Printf("Message from %d: %s", chat_msg.FromId, chat_msg.Payload)
+		//fmt.Printf("Message from %d: %s", chat_msg.FromId, chat_msg.Payload)
 
 		// connMap.Range(func(key, value interface{}) bool {
 		// 	if conn, ok := value.(net.Conn); ok {

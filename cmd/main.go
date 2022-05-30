@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "fmt"
 	// "os"
+	"github.com/juju/loggo"
 	"github.com/myxo/glink/pkg"
 	"sync"
 )
@@ -11,10 +12,15 @@ import (
 var connMap = &sync.Map{}
 
 func main() {
-	gservice := glink.NewGlinkService()
+	tui_logger := NewTuiLogger()
+	loggo.ReplaceDefaultWriter(tui_logger)
+	logger := loggo.GetLogger("default")
+	logger.SetLogLevel(loggo.DEBUG)
+
+	gservice := glink.NewGlinkService(&logger)
 	gservice.Launch()
 
-	tui := NewTui(gservice)
+	tui := NewTui(gservice, tui_logger)
 	tui.Run()
 
 	// for {

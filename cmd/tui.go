@@ -4,25 +4,28 @@ import (
 	"strings"
 
 	"github.com/gdamore/tcell/v2"
+	"github.com/juju/loggo"
 	"github.com/myxo/glink/pkg"
 	"github.com/rivo/tview"
 )
 
 type Tui struct {
-	app   *tview.Application
-	model chatModel
+	app        *tview.Application
+	model      chatModel
+	log_writer *TuiLogger
 }
 
 type chatModel struct {
 	Msgs []string
 }
 
-func NewTui(gservice *glink.GlinkService) *Tui {
+func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	app := tview.NewApplication()
 
 	chat := tview.NewTextView().
-		SetTextAlign(tview.AlignCenter).
-		SetText("Chat")
+		SetTextAlign(tview.AlignLeft).
+		SetDynamicColors(true)
+
 	inputField := tview.NewInputField().
 		SetLabel("Enter a number: ")
 	//SetFieldWidth(10).
@@ -40,7 +43,7 @@ func NewTui(gservice *glink.GlinkService) *Tui {
 		AddItem(chat, 0, 0, 1, 3, 0, 0, false).
 		AddItem(inputField, 2, 0, 1, 3, 0, 0, false)
 
-	tui := Tui{app: app}
+	tui := Tui{app: app, log_writer: log_writer}
 
 	go func() {
 		for {
@@ -50,6 +53,12 @@ func NewTui(gservice *glink.GlinkService) *Tui {
 				app.QueueUpdateDraw(func() {
 					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
 				})
+			case log_entry := <-log_writer.Messages:
+				tui.model.Msgs = append(tui.model.Msgs, getLogText(&log_entry))
+				app.QueueUpdateDraw(func() {
+					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
+				})
+
 			}
 		}
 	}()
@@ -57,6 +66,23 @@ func NewTui(gservice *glink.GlinkService) *Tui {
 	app.SetRoot(grid, true).EnableMouse(true)
 
 	return &tui
+}
+
+func getLogText(entry *loggo.Entry) string {
+	var color string
+	switch entry.Level {
+	case loggo.ERROR:
+		color = "[red]ERROR[white]"
+	case loggo.WARNING:
+		color = "[red]WARN[white]"
+	case loggo.INFO:
+		color = "[blue]INFO[white]"
+	case loggo.DEBUG:
+		color = "[white]DEBUG[white]"
+	}
+
+	return "LOG: " + color + " " + entry.Message
+
 }
 
 func (tui *Tui) Run() {
