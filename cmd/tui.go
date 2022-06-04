@@ -33,6 +33,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	inputField.
 		SetDoneFunc(func(key tcell.Key) {
 			text := inputField.GetText()
+			inputField.SetText("")
 			msg := glink.ChatMessage{Payload: text}
 			gservice.SendMessage(msg)
 		})
@@ -63,7 +64,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		}
 	}()
 
-	app.SetRoot(grid, true).EnableMouse(true)
+	app.SetRoot(grid, true).SetFocus(inputField).EnableMouse(true)
 
 	return &tui
 }

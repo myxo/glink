@@ -1,10 +1,11 @@
 package glink
 
 import (
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/juju/loggo"
 )
 
 const (
@@ -22,10 +23,11 @@ type DiscoveryInfo struct {
 type Discovery struct {
 	NewNodes chan DiscoveryInfo
 	OwnInfo  NodeAnnounce
+	log      *loggo.Logger
 }
 
-func NewDiscovery(own_info NodeAnnounce) *Discovery {
-	return &Discovery{NewNodes: make(chan DiscoveryInfo), OwnInfo: own_info}
+func NewDiscovery(own_info NodeAnnounce, log *loggo.Logger) *Discovery {
+	return &Discovery{NewNodes: make(chan DiscoveryInfo), OwnInfo: own_info, log: log}
 }
 
 func (d *Discovery) Run() {
@@ -40,32 +42,32 @@ func (*Discovery) Close() {
 func (d *Discovery) serve() {
 	addr, err := net.ResolveUDPAddr("udp", srvAddr)
 	if err != nil {
-		log.Fatal(err)
+		d.log.Errorf("%w", err)
 	}
 
 	l, err := net.ListenMulticastUDP("udp", nil, addr)
 	if err != nil {
-		log.Fatalln("Cannot listen multicast", err)
+		d.log.Errorf("Cannot listen multicast", err)
 	}
 	l.SetReadBuffer(maxDatagramSize)
 	for {
 		buffer := make([]byte, maxDatagramSize)
 		n, src, err := l.ReadFromUDP(buffer)
 		if err != nil || n == 0 {
-			log.Print("ReadFromUDP failed:", err)
+			d.log.Errorf("ReadFromUDP failed:", err)
 			continue
 		}
 
 		hdr, err := DecodeHeader(buffer)
 		if err != nil {
-			log.Print("Cannot decode header:", err)
+			d.log.Errorf("Cannot decode header:", err)
 			continue
 		}
 
 		payload := buffer[6 : 6+hdr.PayloadSize]
 		msg, err := DecodeMsg[NodeAnnounce](hdr, payload)
 		if err != nil {
-			log.Print("Cannot decode payload:", payload)
+			d.log.Errorf("Cannot decode payload:", payload)
 			continue
 		}
 
@@ -80,12 +82,12 @@ func (d *Discovery) serve() {
 func (d *Discovery) ping() {
 	addr, err := net.ResolveUDPAddr("udp", srvAddr)
 	if err != nil {
-		log.Fatal(err)
+		d.log.Errorf("%w", err)
 	}
 	c, err := net.DialUDP("udp", nil, addr)
 	msg, err := EncodeMsg(d.OwnInfo)
 	if err != nil {
-		log.Fatal("Cannot encode ping message", err)
+		d.log.Errorf("Cannot encode ping message", err)
 	}
 
 	merged := append(msg.Header, msg.Payload...)

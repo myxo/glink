@@ -40,11 +40,11 @@ func (s *Server) Close() {
 func (s *Server) MakeNewConnectionTo(address string) error {
 	c, err := net.Dial("tcp", address)
 	if err != nil {
-		fmt.Println(err)
+		s.log.Warningf("%w", err)
 		return err
 	}
 
-	s.log.Infof("Connected to %s", c.RemoteAddr().String())
+	s.log.Debugf("Connected to %s", c.RemoteAddr().String())
 
 	s.connections = append(s.connections, c)
 	return nil
@@ -61,17 +61,17 @@ func (s *Server) AcceptLoop() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			fmt.Println("Cannot accept connection: ", err)
+			s.log.Warningf("Cannot accept connection: ", err)
 			continue
 		}
-		s.log.Infof("Accept connection from %s", conn.RemoteAddr().String())
+		s.log.Debugf("Accept connection from %s", conn.RemoteAddr().String())
 
 		id := uuid.New().String()
-		go handleUserConnectoin(id, conn, s.NewEvent)
+		go s.handleUserConnectoin(id, conn, s.NewEvent)
 	}
 }
 
-func handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
+func (s *Server) handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
 	connMap.Store(id, c)
 	defer func() {
 		c.Close()
@@ -85,7 +85,7 @@ func handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
 			return
 		}
 		if n < 6 {
-			println("Not enought header!!!")
+			s.log.Errorf("Not enought header!!!")
 			return
 		}
 		hdr, err := DecodeHeader(msg.Header)
@@ -95,19 +95,10 @@ func handleUserConnectoin(id string, c net.Conn, newEvent chan ChatMessage) {
 			return
 		}
 		if n != int(hdr.PayloadSize) {
-			println("Not enought payload!!!")
+			s.log.Errorf("Not enought payload!!!")
 			continue
 		}
 		chat_msg, err := DecodeMsg[ChatMessage](hdr, msg.Payload)
 		newEvent <- chat_msg
-		//fmt.Printf("Message from %d: %s", chat_msg.FromId, chat_msg.Payload)
-
-		// connMap.Range(func(key, value interface{}) bool {
-		// 	if conn, ok := value.(net.Conn); ok {
-		// 		conn.Write([]byte(chat_msg.Payload))
-		// 	}
-
-		// 	return true
-		// })
 	}
 }

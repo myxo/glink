@@ -1,8 +1,6 @@
 package glink
 
 import (
-	"fmt"
-
 	"github.com/google/uuid"
 	"github.com/juju/loggo"
 )
@@ -10,12 +8,17 @@ import (
 type GlinkService struct {
 	discovery *Discovery
 	Server    *Server
+	Db        *Db
 	OwnCid    string
 	NewMsg    chan ChatMessage
 	log       *loggo.Logger
 }
 
-func NewGlinkService(log *loggo.Logger) *GlinkService {
+func NewGlinkService(log *loggo.Logger, db_path string) *GlinkService {
+	db, err := NewDb(db_path)
+	if err != nil {
+		log.Errorf("%w", err)
+	}
 	server, err := NewServer(log)
 	if err != nil {
 		log.Errorf("%w", err)
@@ -26,10 +29,10 @@ func NewGlinkService(log *loggo.Logger) *GlinkService {
 	log.Infof("Mine info: ", own_info)
 
 	go server.AcceptLoop()
-	discovery := NewDiscovery(own_info)
+	discovery := NewDiscovery(own_info, log)
 	discovery.Run()
 
-	return &GlinkService{discovery: discovery, Server: server, OwnCid: own_cid, NewMsg: make(chan ChatMessage), log: log}
+	return &GlinkService{discovery: discovery, Server: server, Db: db, OwnCid: own_cid, NewMsg: make(chan ChatMessage), log: log}
 }
 
 func (*GlinkService) Stop() {
@@ -38,12 +41,12 @@ func (*GlinkService) Stop() {
 
 func (g *GlinkService) Launch() {
 	go func() {
-		fmt.Println("Service started")
+		g.log.Infof("Service started")
 
 		for {
 			select {
 			case new_node := <-g.discovery.NewNodes:
-				fmt.Println("New node: ", new_node)
+				g.log.Infof("New node: ", new_node)
 				g.Server.MakeNewConnectionTo(new_node.Endpoint)
 			case new_msg := <-g.Server.NewEvent:
 				g.NewMsg <- new_msg
