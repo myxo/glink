@@ -50,7 +50,8 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		for {
 			select {
 			case msg := <-gservice.NewMsg:
-				tui.model.Msgs = append(tui.model.Msgs, msg.Payload)
+				log := msg.FromName + ": " + msg.Payload
+				tui.model.Msgs = append(tui.model.Msgs, log)
 				app.QueueUpdateDraw(func() {
 					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
 				})

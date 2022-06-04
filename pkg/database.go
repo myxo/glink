@@ -123,3 +123,17 @@ func extructOwnInfo(db *sql.DB) (OwnInfo, error) {
 
 	return own_info, nil
 }
+
+func (d *Db) GetNameByCid(cid string) (string, error) {
+	stmt, err := d.db.Prepare("SELECT name FROM chats WHERE cid = ?")
+	if err != nil {
+		return "", err
+	}
+
+	var name string
+	err = stmt.QueryRow(cid).Scan(&name)
+	if err != nil {
+		return "", err
+	}
+	return name, nil
+}

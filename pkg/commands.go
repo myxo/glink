@@ -23,8 +23,9 @@ type JoinResponce struct {
 }
 
 type ChatMessage struct {
-	FromId   uint64
-	ToChatId uint64
+	FromCid  string
+	FromName string
+	ToCid    string
 	Payload  string
 }
 
