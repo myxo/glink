@@ -50,7 +50,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		for {
 			select {
 			case msg := <-gservice.NewMsg:
-				log := msg.FromName + ": " + msg.Payload
+				log := "[blue]" + msg.FromName + "[white]: " + msg.Payload
 				tui.model.Msgs = append(tui.model.Msgs, log)
 				app.QueueUpdateDraw(func() {
 					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
@@ -74,16 +74,16 @@ func getLogText(entry *loggo.Entry) string {
 	var color string
 	switch entry.Level {
 	case loggo.ERROR:
-		color = "[red]ERROR[white]"
+		color = "[red][ERROR[][white]"
 	case loggo.WARNING:
-		color = "[red]WARN[white]"
+		color = "[red][WARN[][white]"
 	case loggo.INFO:
-		color = "[blue]INFO[white]"
+		color = "[blue][INFO[][white]"
 	case loggo.DEBUG:
-		color = "[white]DEBUG[white]"
+		color = "[white][DEBUG[][white]"
 	}
 
-	return "LOG: " + color + " " + entry.Message
+	return "[LOG[]" + color + " " + entry.Message
 
 }
 
