@@ -1,15 +1,19 @@
 # backlog
-[ ] tui polish
+[ ] Resend message via shared connection
+[ ] Fix: loss focus with mouse?
 [ ] Chat rooms
 [ ] Add connection message
 [ ] database.go cleanup
 [ ] Pull messages pattern
 [ ] Network mocking, unit testing
+[ ] Fix: db freezes
+[ ] DB unit testing
 
 # current
-[ ] Messages persistence
 
 # done
+[x] tui polish
+[x] Messages persistence
 [x] User name
 [x] Move all to log
 [x] User info persistence

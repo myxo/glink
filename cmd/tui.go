@@ -32,6 +32,7 @@ type (
 
 func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	app := tview.NewApplication()
+	app.EnableMouse(false)
 
 	chat_model := chatModel{own_info: gservice.OwnChatInfo}
 	chats, err := gservice.Db.GetLastChats()
@@ -51,22 +52,32 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		SetDynamicColors(true)
 
 	inputField := tview.NewInputField().
-		SetLabel(chat_model.own_info.Name + ": ")
-	//SetFieldWidth(10).
-	//SetAcceptanceFunc(tview.InputFieldInteger).
+		SetLabel(" " + chat_model.own_info.Name + ": ").
+		SetFieldBackgroundColor(tcell.ColorBlack)
+	
 	inputField.
 		SetDoneFunc(func(key tcell.Key) {
+			if key == tcell.KeyEscape {
+				inputField.SetText("")
+				return
+			}
+			if key != tcell.KeyEnter {
+				return
+			}
 			text := inputField.GetText()
+			if text == "" {
+				return
+			}
 			inputField.SetText("")
 			msg := glink.ChatMessage{Text: text, ToCid: chat_model.active_chat}
 			gservice.UserMessage(msg)
 		})
 
 	grid := tview.NewGrid().
-		SetColumns(30, 30).
+		SetColumns(30).
 		SetBorders(true).
-		AddItem(chat, 0, 0, 1, 3, 0, 0, false).
-		AddItem(inputField, 2, 0, 1, 3, 0, 0, false)
+		AddItem(chat, 0, 0, 7, 3, 0, 0, false).
+		AddItem(inputField, 7, 0, 1, 3, 0, 0, true)
 
 	tui := Tui{app: app, gservice: gservice, model: &chat_model, view: &chatView{chat: chat}, log_writer: log_writer}
 

@@ -29,30 +29,30 @@ func NewDb(path string) (*Db, error) {
 	}
 
 	main_table_stmt := `
-  CREATE TABLE IF NOT EXISTS main (
-    own_cid     TEXT PRIMARY KEY, 
-    timezone    INTEGER,
-    db_version  INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS user (
-    uid             TEXT PRIMARY KEY,
-    name            TEXT,
-    endpoints       TEXT
-  );
-  CREATE TABLE IF NOT EXISTS chat (
-    cid             TEXT PRIMARY KEY,
-    uids            TEXT,
-    last_event_time INTEGER
-  );
-  CREATE TABLE IF NOT EXISTS message (
-    uid         TEXT,
-    msg_index   INTEGER,
-    cid         TEXT,
-    create_time INTEGER,
-    msg         TEXT,
-    PRIMARY KEY(uid, msg_index)
-  );
-  `
+		CREATE TABLE IF NOT EXISTS main (
+		  own_cid     TEXT PRIMARY KEY, 
+		  timezone    INTEGER,
+		  db_version  INTEGER NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS user (
+		  uid             TEXT PRIMARY KEY,
+		  name            TEXT,
+		  endpoints       TEXT
+		);
+		CREATE TABLE IF NOT EXISTS chat (
+		  cid             TEXT PRIMARY KEY,
+		  uids            TEXT,
+		  last_event_time INTEGER
+		);
+		CREATE TABLE IF NOT EXISTS message (
+		  uid         TEXT,
+		  msg_index   INTEGER,
+		  cid         TEXT,
+		  create_time INTEGER,
+		  msg         TEXT,
+		  PRIMARY KEY(uid, msg_index)
+		);
+		`
 
 	_, err = db.Exec(main_table_stmt)
 	if err != nil {
