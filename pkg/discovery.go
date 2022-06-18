@@ -66,7 +66,7 @@ func (d *Discovery) serve() {
 		}
 
 		payload := buffer[6 : 6+hdr.PayloadSize]
-		msg, err := DecodeMsg[NodeAnnounce](hdr, payload)
+		msg, err := DecodeMsg[NodeAnnounce](payload)
 		if err != nil {
 			d.log.Errorf("Cannot decode payload:", payload)
 			continue
@@ -76,7 +76,6 @@ func (d *Discovery) serve() {
 			knownNodes.Store(src.String(), nil)
 			d.NewNodes <- DiscoveryInfo{ClientId: msg.Cid, ClientName: msg.Name, Endpoint: msg.Endpoint}
 		}
-		//h(src, n, b)
 	}
 }
 
@@ -92,6 +91,8 @@ func (d *Discovery) ping() {
 	}
 
 	merged := append(msg.Header, msg.Payload...)
+
+	d.log.Tracef("Start sending discovery info")
 
 	for {
 		c.Write(merged)

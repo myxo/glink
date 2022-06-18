@@ -12,24 +12,39 @@ type NodeAnnounce struct {
 }
 
 type AskForJoin struct {
-	who     uint64
-	chat_id uint64
+	From         string
+	To           string
+	Cid          string
+	Participants []string
+	GroupChat    bool
 }
 
-type JoinResponce struct {
-	chat_id uint64
-	to      uint64
-	result  bool
+type JoinChat struct {
+	From string
+	To   string
+	Cid  string
 }
 
 type ChatMessage struct {
-	FromCid  string
+	FromUid  string
 	FromName string
 	ToCid    string
-	Payload  string
+	Text     string
+	Index    uint32
 }
 
-func GetTypeId(cmd any) (uint8, error) {
+type ConnectInfo struct {
+	MyUid  string
+	MyName string
+}
+
+// --------- Internal events --------------------
+type ChatUpdate struct {
+	Cid     string
+	NewUids []string
+}
+
+func GetTypeId(cmd any) (uint16, error) {
 	name := reflect.TypeOf(cmd).Name()
 	switch name {
 	case "NodeAnnounce":
@@ -40,6 +55,8 @@ func GetTypeId(cmd any) (uint8, error) {
 		return 3, nil
 	case "ChatMessage":
 		return 4, nil
+	case "ConnectInfo":
+		return 5, nil
 	}
 	return 0, fmt.Errorf("Unknown command type %s", name)
 

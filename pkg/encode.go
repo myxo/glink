@@ -7,8 +7,7 @@ import (
 
 type MsgHeader struct {
 	PayloadSize uint32
-	MsgType     uint8
-	padding     uint8
+	MsgType     uint16 // binary packet do not have PutUint8... wtf?
 }
 
 type MsgBytes struct {
@@ -22,13 +21,15 @@ func NewMsgBytes() *MsgBytes {
 
 func EncodeHeader(hdr MsgHeader) ([]byte, error) {
 	header := make([]byte, 6)
-	binary.LittleEndian.PutUint32(header, uint32(hdr.PayloadSize))
+	binary.LittleEndian.PutUint32(header, hdr.PayloadSize)
+	binary.LittleEndian.PutUint16(header[4:], hdr.MsgType)
 	return header, nil
 }
 
 func DecodeHeader(bytes []byte) (MsgHeader, error) {
 	var res MsgHeader
-	res.PayloadSize = uint32(binary.LittleEndian.Uint32(bytes))
+	res.PayloadSize = binary.LittleEndian.Uint32(bytes)
+	res.MsgType = binary.LittleEndian.Uint16(bytes[4:])
 	return res, nil
 }
 
@@ -40,7 +41,6 @@ func EncodeMsg(msg any) (MsgBytes, error) {
 
 	res := MsgBytes{
 		Payload: j,
-		Header:  make([]byte, 6),
 	}
 
 	msg_type, err := GetTypeId(msg)
@@ -57,7 +57,7 @@ func EncodeMsg(msg any) (MsgBytes, error) {
 	return res, err
 }
 
-func DecodeMsg[T any](hdr MsgHeader, payload []byte) (T, error) {
+func DecodeMsg[T any](payload []byte) (T, error) {
 	var res T
 
 	err := json.Unmarshal(payload, &res)

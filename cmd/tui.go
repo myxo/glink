@@ -9,33 +9,57 @@ import (
 	"github.com/rivo/tview"
 )
 
-type Tui struct {
-	app        *tview.Application
-	model      chatModel
-	log_writer *TuiLogger
-}
+type (
+	Tui struct {
+		app        *tview.Application
+		gservice   *glink.GlinkService
+		model      *chatModel
+		view       *chatView
+		log_writer *TuiLogger
+	}
 
-type chatModel struct {
-	Msgs []string
-}
+	chatModel struct {
+		own_info    glink.UserLightInfo
+		Msgs        []string
+		Chats       []string
+		active_chat string
+	}
+
+	chatView struct {
+		chat *tview.TextView
+	}
+)
 
 func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	app := tview.NewApplication()
+
+	chat_model := chatModel{own_info: gservice.OwnChatInfo}
+	chats, err := gservice.Db.GetLastChats()
+	if err != nil {
+		log_writer.Warnf("Cannot read last chats: %s", err)
+	}
+	chat_model.Chats = chats
+
+	if len(chat_model.Chats) != 0 {
+		chat_model.active_chat = chat_model.Chats[0]
+	}
+
+	log_writer.Infof("Active chat: %s", chat_model.active_chat)
 
 	chat := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
 		SetDynamicColors(true)
 
 	inputField := tview.NewInputField().
-		SetLabel("Enter a number: ")
+		SetLabel(chat_model.own_info.Name + ": ")
 	//SetFieldWidth(10).
 	//SetAcceptanceFunc(tview.InputFieldInteger).
 	inputField.
 		SetDoneFunc(func(key tcell.Key) {
 			text := inputField.GetText()
 			inputField.SetText("")
-			msg := glink.ChatMessage{Payload: text}
-			gservice.SendMessage(msg)
+			msg := glink.ChatMessage{Text: text, ToCid: chat_model.active_chat}
+			gservice.UserMessage(msg)
 		})
 
 	grid := tview.NewGrid().
@@ -44,17 +68,18 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		AddItem(chat, 0, 0, 1, 3, 0, 0, false).
 		AddItem(inputField, 2, 0, 1, 3, 0, 0, false)
 
-	tui := Tui{app: app, log_writer: log_writer}
+	tui := Tui{app: app, gservice: gservice, model: &chat_model, view: &chatView{chat: chat}, log_writer: log_writer}
+
+	err = tui.initMessages()
+	if err != nil {
+		log_writer.Warnf("Cannot init messages in tui: %s", err)
+	}
 
 	go func() {
 		for {
 			select {
-			case msg := <-gservice.NewMsg:
-				log := "[blue]" + msg.FromName + "[white]: " + msg.Payload
-				tui.model.Msgs = append(tui.model.Msgs, log)
-				app.QueueUpdateDraw(func() {
-					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
-				})
+			case ev := <-gservice.UxEvents:
+				tui.processEvent(ev)
 			case log_entry := <-log_writer.Messages:
 				tui.model.Msgs = append(tui.model.Msgs, getLogText(&log_entry))
 				app.QueueUpdateDraw(func() {
@@ -70,6 +95,35 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	return &tui
 }
 
+func (t *Tui) processEvent(ev interface{}) {
+	switch ev := ev.(type) {
+	case glink.ChatMessage:
+		text := "[blue]" + ev.FromName + "[white]: " + ev.Text
+		t.model.Msgs = append(t.model.Msgs, text)
+		t.app.QueueUpdateDraw(func() {
+			t.view.chat.SetText(strings.Join(t.model.Msgs, "\n"))
+		})
+	case glink.ChatUpdate:
+		t.model.active_chat = ev.Cid
+	default:
+		t.log_writer.Error("Unknown event type")
+	}
+}
+
+func (t *Tui) initMessages() error {
+	msgs, err := t.gservice.GetMessages(t.model.active_chat)
+	if err != nil {
+		return err
+	}
+	for _, msg := range msgs {
+		text := "[blue]" + msg.FromName + "[white]: " + msg.Text
+		t.model.Msgs = append(t.model.Msgs, text)
+
+	}
+	t.view.chat.SetText(strings.Join(t.model.Msgs, "\n"))
+	return nil
+}
+
 func getLogText(entry *loggo.Entry) string {
 	var color string
 	switch entry.Level {
@@ -81,9 +135,11 @@ func getLogText(entry *loggo.Entry) string {
 		color = "[blue][INFO[][white]"
 	case loggo.DEBUG:
 		color = "[white][DEBUG[][white]"
+	case loggo.TRACE:
+		color = "[grey][TRACE[][grey]"
 	}
 
-	return "[LOG[]" + color + " " + entry.Message
+	return "[white][LOG[]" + color + " " + entry.Message
 
 }
 

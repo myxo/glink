@@ -4,12 +4,13 @@
 [ ] Add connection message
 [ ] database.go cleanup
 [ ] Pull messages pattern
-[ ] Messages persistence
+[ ] Network mocking, unit testing
 
 # current
-[ ] User name
+[ ] Messages persistence
 
 # done
+[x] User name
 [x] Move all to log
 [x] User info persistence
 [x] Make input field focus all the time
