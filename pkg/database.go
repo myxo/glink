@@ -50,7 +50,7 @@ func NewDb(path string) (*Db, error) {
 		  cid         TEXT,
 		  create_time INTEGER,
 		  msg         TEXT,
-		  PRIMARY KEY(uid, msg_index)
+		  PRIMARY KEY(uid, cid, msg_index)
 		);
 		`
 

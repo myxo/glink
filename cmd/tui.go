@@ -20,7 +20,8 @@ type (
 
 	chatModel struct {
 		own_info    glink.UserLightInfo
-		Msgs        []string
+		Msgs        map[string][]glink.ChatMessage
+		Logs        []loggo.Entry
 		Chats       []string
 		active_chat string
 	}
@@ -34,7 +35,10 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	app := tview.NewApplication()
 	app.EnableMouse(false)
 
-	chat_model := chatModel{own_info: gservice.OwnChatInfo}
+	chat_model := chatModel{
+		own_info: gservice.OwnChatInfo,
+		Msgs:     map[string][]glink.ChatMessage{},
+	}
 	chats, err := gservice.Db.GetLastChats()
 	if err != nil {
 		log_writer.Warnf("Cannot read last chats: %s", err)
@@ -51,10 +55,18 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		SetTextAlign(tview.AlignLeft).
 		SetDynamicColors(true)
 
+	tui := Tui{
+		app:        app,
+		gservice:   gservice,
+		model:      &chat_model,
+		view:       &chatView{chat: chat},
+		log_writer: log_writer,
+	}
+
 	inputField := tview.NewInputField().
 		SetLabel(" " + chat_model.own_info.Name + ": ").
 		SetFieldBackgroundColor(tcell.ColorBlack)
-	
+
 	inputField.
 		SetDoneFunc(func(key tcell.Key) {
 			if key == tcell.KeyEscape {
@@ -73,18 +85,31 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 			gservice.UserMessage(msg)
 		})
 
+	chat_list := tview.NewList()
+	for i, chat := range chat_model.Chats {
+		// TODO: propper handle of chat change
+		iCopy := i
+		chat_list.AddItem(chat, "", 'a'+rune(i), func() {
+			new_active_chat := chat_model.Chats[iCopy]
+			if new_active_chat != chat_model.active_chat {
+				chat_model.active_chat = new_active_chat
+				tui.refreshMessages()
+			}
+		})
+	}
+
 	grid := tview.NewGrid().
 		SetColumns(30).
 		SetBorders(true).
-		AddItem(chat, 0, 0, 7, 3, 0, 0, false).
+		AddItem(chat, 0, 0, 6, 3, 0, 0, false).
+		AddItem(chat_list, 6, 0, 1, 3, 0, 0, false).
 		AddItem(inputField, 7, 0, 1, 3, 0, 0, true)
-
-	tui := Tui{app: app, gservice: gservice, model: &chat_model, view: &chatView{chat: chat}, log_writer: log_writer}
 
 	err = tui.initMessages()
 	if err != nil {
 		log_writer.Warnf("Cannot init messages in tui: %s", err)
 	}
+	tui.refreshMessages()
 
 	go func() {
 		for {
@@ -92,11 +117,8 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 			case ev := <-gservice.UxEvents:
 				tui.processEvent(ev)
 			case log_entry := <-log_writer.Messages:
-				tui.model.Msgs = append(tui.model.Msgs, getLogText(&log_entry))
-				app.QueueUpdateDraw(func() {
-					chat.SetText(strings.Join(tui.model.Msgs, "\n"))
-				})
-
+				tui.model.Logs = append(tui.model.Logs, log_entry)
+				app.QueueUpdateDraw(func() { tui.refreshMessages() })
 			}
 		}
 	}()
@@ -109,11 +131,8 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 func (t *Tui) processEvent(ev interface{}) {
 	switch ev := ev.(type) {
 	case glink.ChatMessage:
-		text := "[blue]" + ev.FromName + "[white]: " + ev.Text
-		t.model.Msgs = append(t.model.Msgs, text)
-		t.app.QueueUpdateDraw(func() {
-			t.view.chat.SetText(strings.Join(t.model.Msgs, "\n"))
-		})
+		t.model.Msgs[ev.ToCid] = append(t.model.Msgs[ev.ToCid], ev)
+		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
 	case glink.ChatUpdate:
 		t.model.active_chat = ev.Cid
 	default:
@@ -122,17 +141,25 @@ func (t *Tui) processEvent(ev interface{}) {
 }
 
 func (t *Tui) initMessages() error {
-	msgs, err := t.gservice.GetMessages(t.model.active_chat)
-	if err != nil {
-		return err
-	}
-	for _, msg := range msgs {
-		text := "[blue]" + msg.FromName + "[white]: " + msg.Text
-		t.model.Msgs = append(t.model.Msgs, text)
+	for _, chat := range t.model.Chats {
+		msgs, err := t.gservice.GetMessages(chat)
+		if err != nil {
+			return err
+		}
+		t.model.Msgs[chat] = msgs
 
 	}
-	t.view.chat.SetText(strings.Join(t.model.Msgs, "\n"))
 	return nil
+}
+
+func (t *Tui) refreshMessages() {
+	msgs := make([]string, 0, 10)
+	for _, msg := range t.model.Msgs[t.model.active_chat] {
+		text := "[blue]" + msg.FromName + "[white]: " + msg.Text
+		msgs = append(msgs, text)
+
+	}
+	t.view.chat.SetText(strings.Join(msgs, "\n"))
 }
 
 func getLogText(entry *loggo.Entry) string {
