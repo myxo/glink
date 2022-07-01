@@ -11,12 +11,10 @@ type NodeAnnounce struct {
 	Endpoint string
 }
 
-type AskForJoin struct {
-	From         string
-	To           string
-	Cid          string
-	Participants []string
-	GroupChat    bool
+type InviteForJoin struct {
+	From string
+	To   string
+	Chat ChatInfo
 }
 
 type JoinChat struct {
@@ -38,9 +36,17 @@ type ConnectInfo struct {
 	MyName string
 }
 
+// -------------- Common ------------------------
+type ChatInfo struct {
+	Cid          string
+	Participants []string
+	Name         string
+	Group        bool
+}
+
 // --------- Internal events --------------------
 type ChatUpdate struct {
-	Cid     string
+	Info    *ChatInfo
 	NewUids []string
 }
 
@@ -49,7 +55,7 @@ func GetTypeId(cmd any) (uint16, error) {
 	switch name {
 	case "NodeAnnounce":
 		return 1, nil
-	case "AskForJoin":
+	case "InviteForJoin":
 		return 2, nil
 	case "JoinResponce":
 		return 3, nil

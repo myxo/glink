@@ -132,7 +132,7 @@ func (s *Server) handleUserConnectoin(c net.Conn, newEvent chan interface{}) {
 		case 1:
 			ev, err = DecodeMsg[NodeAnnounce](msg.Payload)
 		case 2:
-			ev, err = DecodeMsg[AskForJoin](msg.Payload)
+			ev, err = DecodeMsg[InviteForJoin](msg.Payload)
 			if err == nil && ev == nil {
 				s.log.Warningf("Ev is NIL!!!!!!!!")
 				return

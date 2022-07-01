@@ -22,12 +22,14 @@ type (
 		own_info    glink.UserLightInfo
 		Msgs        map[string][]glink.ChatMessage
 		Logs        []loggo.Entry
-		Chats       []string
+		Chats       []glink.ChatInfo
 		active_chat string
 	}
 
 	chatView struct {
-		chat *tview.TextView
+		chat     *tview.TextView
+		logs     *tview.TextView
+		chatList *tview.List
 	}
 )
 
@@ -46,7 +48,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	chat_model.Chats = chats
 
 	if len(chat_model.Chats) != 0 {
-		chat_model.active_chat = chat_model.Chats[0]
+		chat_model.active_chat = chat_model.Chats[0].Cid
 	}
 
 	log_writer.Infof("Active chat: %s", chat_model.active_chat)
@@ -55,11 +57,16 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		SetTextAlign(tview.AlignLeft).
 		SetDynamicColors(true)
 
+	log_view := tview.NewTextView().
+		SetTextAlign(tview.AlignLeft).
+		SetDynamicColors(true)
+
+	chat_list := tview.NewList()
 	tui := Tui{
 		app:        app,
 		gservice:   gservice,
 		model:      &chat_model,
-		view:       &chatView{chat: chat},
+		view:       &chatView{chat: chat, logs: log_view, chatList: chat_list},
 		log_writer: log_writer,
 	}
 
@@ -85,23 +92,11 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 			gservice.UserMessage(msg)
 		})
 
-	chat_list := tview.NewList()
-	for i, chat := range chat_model.Chats {
-		// TODO: propper handle of chat change
-		iCopy := i
-		chat_list.AddItem(chat, "", 'a'+rune(i), func() {
-			new_active_chat := chat_model.Chats[iCopy]
-			if new_active_chat != chat_model.active_chat {
-				chat_model.active_chat = new_active_chat
-				tui.refreshMessages()
-			}
-		})
-	}
-
 	grid := tview.NewGrid().
 		SetColumns(30).
 		SetBorders(true).
-		AddItem(chat, 0, 0, 6, 3, 0, 0, false).
+		AddItem(log_view, 0, 0, 3, 3, 0, 0, false).
+		AddItem(chat, 3, 0, 3, 3, 0, 0, false).
 		AddItem(chat_list, 6, 0, 1, 3, 0, 0, false).
 		AddItem(inputField, 7, 0, 1, 3, 0, 0, true)
 
@@ -109,6 +104,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	if err != nil {
 		log_writer.Warnf("Cannot init messages in tui: %s", err)
 	}
+	tui.refreshChatList()
 	tui.refreshMessages()
 
 	go func() {
@@ -134,7 +130,15 @@ func (t *Tui) processEvent(ev interface{}) {
 		t.model.Msgs[ev.ToCid] = append(t.model.Msgs[ev.ToCid], ev)
 		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
 	case glink.ChatUpdate:
-		t.model.active_chat = ev.Cid
+		t.model.active_chat = ev.Info.Cid
+		for _, ci := range t.model.Chats {
+			if ci.Cid == ev.Info.Cid {
+				return
+			}
+		}
+		t.model.Chats = append(t.model.Chats, *ev.Info)
+		t.app.QueueUpdateDraw(func() { t.refreshChatList() })
+		
 	default:
 		t.log_writer.Error("Unknown event type")
 	}
@@ -142,14 +146,31 @@ func (t *Tui) processEvent(ev interface{}) {
 
 func (t *Tui) initMessages() error {
 	for _, chat := range t.model.Chats {
-		msgs, err := t.gservice.GetMessages(chat)
+		msgs, err := t.gservice.GetMessages(chat.Cid)
 		if err != nil {
 			return err
 		}
-		t.model.Msgs[chat] = msgs
+		t.model.Msgs[chat.Cid] = msgs
 
 	}
 	return nil
+}
+
+func (t *Tui) refreshChatList() {
+	for i, chat := range t.model.Chats {
+		iCopy := i
+		name := chat.Name
+		if name == "" && !chat.Group {
+			// other guy name
+		}
+		t.view.chatList.AddItem(name, "", 'a'+rune(i), func() {
+			new_active_chat := t.model.Chats[iCopy].Cid
+			if new_active_chat != t.model.active_chat {
+				t.model.active_chat = new_active_chat
+				t.refreshMessages()
+			}
+		})
+	}
 }
 
 func (t *Tui) refreshMessages() {
@@ -160,6 +181,12 @@ func (t *Tui) refreshMessages() {
 
 	}
 	t.view.chat.SetText(strings.Join(msgs, "\n"))
+
+	logs := make([]string, 0, 10)
+	for _, entry := range t.model.Logs {
+		logs = append(logs, getLogText(&entry))
+	}
+	t.view.logs.SetText(strings.Join(logs, "\n"))
 }
 
 func getLogText(entry *loggo.Entry) string {

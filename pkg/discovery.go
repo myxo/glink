@@ -1,6 +1,7 @@
 package glink
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"time"
@@ -31,52 +32,60 @@ func NewDiscovery(own_info NodeAnnounce, log *loggo.Logger) *Discovery {
 	return &Discovery{NewNodes: make(chan DiscoveryInfo), OwnInfo: own_info, log: log}
 }
 
-func (d *Discovery) Run() {
-	go d.serve()
+func (d *Discovery) Run() error {
+	err := d.serve()
+	if err != nil {
+		return err
+	}
 	go d.ping()
+	return nil
 }
 
 func (*Discovery) Close() {
 
 }
 
-func (d *Discovery) serve() {
+func (d *Discovery) serve() error {
 	addr, err := net.ResolveUDPAddr("udp", srvAddr)
 	if err != nil {
-		d.log.Errorf("%w", err)
+		return err
 	}
 
 	l, err := net.ListenMulticastUDP("udp", nil, addr)
 	if err != nil {
-		d.log.Errorf("Cannot listen multicast", err)
+		return fmt.Errorf("Cannot listen multicast: %s", err)
 	}
-	l.SetReadBuffer(maxDatagramSize)
-	for {
-		buffer := make([]byte, maxDatagramSize)
-		n, src, err := l.ReadFromUDP(buffer)
-		if err != nil || n == 0 {
-			d.log.Errorf("ReadFromUDP failed:", err)
-			continue
-		}
 
-		hdr, err := DecodeHeader(buffer)
-		if err != nil {
-			d.log.Errorf("Cannot decode header:", err)
-			continue
-		}
+	go func() {
+		l.SetReadBuffer(maxDatagramSize)
+		for {
+			buffer := make([]byte, maxDatagramSize)
+			n, src, err := l.ReadFromUDP(buffer)
+			if err != nil || n == 0 {
+				d.log.Errorf("ReadFromUDP failed:", err)
+				continue
+			}
 
-		payload := buffer[6 : 6+hdr.PayloadSize]
-		msg, err := DecodeMsg[NodeAnnounce](payload)
-		if err != nil {
-			d.log.Errorf("Cannot decode payload:", payload)
-			continue
-		}
+			hdr, err := DecodeHeader(buffer)
+			if err != nil {
+				d.log.Errorf("Cannot decode header:", err)
+				continue
+			}
 
-		if _, has := knownNodes.Load(src.String()); !has {
-			knownNodes.Store(src.String(), nil)
-			d.NewNodes <- DiscoveryInfo{ClientId: msg.Cid, ClientName: msg.Name, Endpoint: msg.Endpoint}
+			payload := buffer[6 : 6+hdr.PayloadSize]
+			msg, err := DecodeMsg[NodeAnnounce](payload)
+			if err != nil {
+				d.log.Errorf("Cannot decode payload:", payload)
+				continue
+			}
+
+			if _, has := knownNodes.Load(src.String()); !has {
+				knownNodes.Store(src.String(), nil)
+				d.NewNodes <- DiscoveryInfo{ClientId: msg.Cid, ClientName: msg.Name, Endpoint: msg.Endpoint}
+			}
 		}
-	}
+	}()
+	return nil
 }
 
 func (d *Discovery) ping() {

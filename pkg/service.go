@@ -30,17 +30,17 @@ func readName() string {
 	return text[:len(text)-1]
 }
 
-func NewGlinkService(log *loggo.Logger, db_path string) *GlinkService {
+func NewGlinkService(log *loggo.Logger, db_path string) (*GlinkService, error) {
 	db, err := NewDb(db_path)
 	if err != nil {
-		log.Errorf("%w", err)
+		return nil, err
 	}
 
 	own_info := db.own_info
 	if own_info.Uid == "" {
 		err = db.SetOwnCid(uuid.New().String())
 		if err != nil {
-			log.Errorf("%w", err)
+			return nil, err
 		}
 		own_info.Uid = db.GetOwnInfo().Uid
 	}
@@ -51,7 +51,7 @@ func NewGlinkService(log *loggo.Logger, db_path string) *GlinkService {
 
 	server, err := NewServer(own_info, log)
 	if err != nil {
-		log.Errorf("%w", err)
+		return nil, err
 	}
 	own_announce := NodeAnnounce{Cid: own_info.Uid, Name: own_info.Name, Endpoint: server.ListenerAddress()}
 
@@ -59,7 +59,10 @@ func NewGlinkService(log *loggo.Logger, db_path string) *GlinkService {
 
 	go server.AcceptLoop()
 	discovery := NewDiscovery(own_announce, log)
-	discovery.Run()
+	err = discovery.Run()
+	if err != nil {
+		return nil, err
+	}
 
 	out := &GlinkService{discovery: discovery,
 		Server:         server,
@@ -70,7 +73,7 @@ func NewGlinkService(log *loggo.Logger, db_path string) *GlinkService {
 		conn_candidate: make(map[string]DiscoveryInfo),
 		curr_msg_index: make(map[string]atomic.Uint32),
 	}
-	return out
+	return out, nil
 }
 
 func (*GlinkService) Stop() {
@@ -156,7 +159,7 @@ func (g *GlinkService) serve() {
 }
 
 func (g *GlinkService) processEvent(ev interface{}) {
-	//g.log.Tracef("Input message of type %s", reflect.TypeOf(ev).Name())
+	g.log.Debugf("Input message of type %s", reflect.TypeOf(ev).Name())
 	switch ev := ev.(type) {
 
 	case ChatMessage:
@@ -169,15 +172,25 @@ func (g *GlinkService) processEvent(ev interface{}) {
 		}
 		g.UxEvents <- ev
 
-	case AskForJoin:
-		g.log.Infof("Get AskForJoin msg from %s", ev.From)
-		send := JoinChat{From: g.OwnChatInfo.Uid, To: ev.From, Cid: ev.Cid}
-		err := g.Db.SaveNewChat(ev.Cid, ev.Participants)
+	case InviteForJoin:
+		g.log.Infof("Get InviteForJoin msg from %s(%s)", ev.Chat.Name, ev.From)
+		send := JoinChat{From: g.OwnChatInfo.Uid, To: ev.From, Cid: ev.Chat.Cid}
+		chatName := ev.Chat.Name
+		if !ev.Chat.Group {
+			username, err := g.GetNameByCid(ev.From)
+			if err != nil {
+				g.log.Errorf("Cannot get name by cid: %s", err)
+				return
+			}
+			chatName = username
+		}
+		err := g.Db.SaveNewChat(ev.Chat.Cid, chatName, ev.Chat.Participants)
 		if err != nil {
 			g.log.Errorf("Cannot save new chat: %s", err)
 			return
 		}
-		g.UxEvents <- ChatUpdate{Cid: send.Cid, NewUids: []string{send.From}}
+		info := &ChatInfo{Cid: ev.Chat.Cid, Name: chatName, Participants: ev.Chat.Participants, Group: ev.Chat.Group}
+		g.UxEvents <- ChatUpdate{Info: info, NewUids: []string{send.From}}
 		SendToAll(g.Server, send)
 
 	case JoinChat:
@@ -186,7 +199,12 @@ func (g *GlinkService) processEvent(ev interface{}) {
 			g.log.Errorf("Cannot save new chat: %s", err)
 
 		}
-		g.UxEvents <- ChatUpdate{Cid: ev.Cid, NewUids: []string{ev.From}}
+		info, err := g.Db.GetChatInfo(ev.Cid)
+		if err != nil {
+			g.log.Errorf("Cannot get chat info for cid %s", ev.Cid)
+			return
+		}
+		g.UxEvents <- ChatUpdate{Info: info, NewUids: []string{ev.From}}
 
 	default:
 		g.log.Warningf("Unknow event %s", reflect.TypeOf(ev).Name())
@@ -207,19 +225,21 @@ func (g *GlinkService) processUserCommand(cmd string) {
 
 		cid := uuid.New().String()
 		participants := []string{g.OwnChatInfo.Uid}
-		msg := AskForJoin{From: g.OwnChatInfo.Uid, To: node.ClientId, Cid: cid, Participants: participants, GroupChat: false}
-		err := g.Db.SaveNewChat(cid, participants)
+		chatInfo := ChatInfo{Cid: cid, Participants: participants, Group: false }
+		msg := InviteForJoin{From: g.OwnChatInfo.Uid, To: node.ClientId, Chat: chatInfo }
+		err := g.Db.SaveNewChat(cid, node.ClientName, participants)
 		if err != nil {
 			g.log.Errorf("Cannot save new chat: %s", err)
 			return
 		}
-		g.UxEvents <- ChatUpdate{Cid: msg.Cid, NewUids: []string{msg.From}}
 		g.log.Debugf("Sending AskForJoin")
 		err = SendTo(g.Server, node.ClientId, msg)
 		if err != nil {
-			g.log.Errorf("Cannot send AskForJoin message: %w", err)
+			g.log.Errorf("Cannot send AskForJoin message: %s", err)
 			return
 		}
+		chatInfo.Name = node.ClientName
+		g.UxEvents <- ChatUpdate{Info: &chatInfo, NewUids: []string{msg.From}}
 	}
 }
 

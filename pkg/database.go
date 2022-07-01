@@ -42,6 +42,8 @@ func NewDb(path string) (*Db, error) {
 		CREATE TABLE IF NOT EXISTS chat (
 		  cid             TEXT PRIMARY KEY,
 		  uids            TEXT,
+		  name            TEXT,
+		  group_flag      INTEGER,
 		  last_event_time INTEGER
 		);
 		CREATE TABLE IF NOT EXISTS message (
@@ -82,13 +84,13 @@ func (d *Db) SetOwnName(name string) error {
 func (d *Db) SetOwnCid(cid string) error {
 	d.own_info.Uid = cid
 
-	return d.doQuery(`INSERT INTO main (own_cid, timezone, db_version) 
-    VALUES (?, -3, 1)`, d.own_info.Uid)
+	return d.doQuery(`INSERT INTO main (own_cid, timezone, db_version) VALUES (?, -3, 1)`, 
+		d.own_info.Uid)
 }
 
-func (d *Db) SaveNewChat(cid string, participants []string) error {
-	return d.doQuery(`INSERT INTO chat (cid, uids, last_event_time) 
-    VALUES(?, ?, ?)`, cid, strings.Join(participants, ","), time.Now().UnixMicro())
+func (d *Db) SaveNewChat(cid, name string, participants []string) error {
+	return d.doQuery(`INSERT INTO chat (cid, uids, name, group_flag, last_event_time) VALUES(?, ?, ?, 0, ?)`, 
+		cid, strings.Join(participants, ","), name, time.Now().UnixMicro())
 }
 
 func (d *Db) AddParticipantToChat(cid string, participant string) error {
@@ -97,18 +99,19 @@ func (d *Db) AddParticipantToChat(cid string, participant string) error {
 		return err
 	}
 	row.Next()
-	var cur_participats string
-	err = row.Scan(&cur_participats)
+	var participats string
+	err = row.Scan(&participats)
 	if err != nil {
 		return err
 	}
-	return d.doQuery(`INSERT INTO chat (cid, uids, last_event_time) 
-    VALUES(?, ?, ?)`, cid, cur_participats+","+participant, time.Now().UnixMicro())
+	participats += "," + participant
+	return d.doQuery(`UPDATE chat SET uids = ?, last_event_time = ? WHERE cid = ?`,
+		participats, time.Now().UnixMicro(), cid)
 }
 
 func (d *Db) SaveNewUid(uid string, name string, endpoints string) error {
-	return d.doQuery(`INSERT INTO user (uid, name, endpoints) 
-    VALUES(?, ?, ?)`, uid, name, endpoints)
+	return d.doQuery(`INSERT INTO user (uid, name, endpoints) VALUES(?, ?, ?)`, 
+		uid, name, endpoints)
 }
 
 func (d *Db) IsKnownUid(uid string) bool {
@@ -160,8 +163,8 @@ func (d *Db) GetMessages(cid string, from_index, to_index uint32) ([]ChatMessage
 	return res, nil
 }
 
-func (d *Db) GetLastChats() ([]string, error) {
-	stmt, err := d.db.Prepare(`SELECT cid FROM chat ORDER BY last_event_time`)
+func (d *Db) GetLastChats() ([]ChatInfo, error) {
+	stmt, err := d.db.Prepare(`SELECT cid, uids, name, group_flag FROM chat ORDER BY last_event_time`)
 	if err != nil {
 		return nil, err
 	}
@@ -173,17 +176,47 @@ func (d *Db) GetLastChats() ([]string, error) {
 	}
 	defer rows.Close()
 
-	res := make([]string, 0, 10)
+	res := make([]ChatInfo, 0, 10)
 
 	for rows.Next() {
-		var info string
-		err = rows.Scan(&info)
+		var info ChatInfo
+		var participants string
+		var group int
+		err = rows.Scan(&info.Cid, &participants, &info.Name, &group)
 		if err != nil {
 			return nil, err
 		}
+		if group != 0 {
+			info.Group = true
+		}
+		info.Participants = strings.Split(participants, ",")
 		res = append(res, info)
 	}
 	return res, nil
+}
+
+func (d *Db) GetChatInfo(cid string) (*ChatInfo, error) {
+	rows, err := d.doSelect(`SELECT cid, uids, name, group_flag FROM chat WHERE cid = ?`, cid)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var info ChatInfo
+		var participants string
+		var group int
+		err = rows.Scan(&info.Cid, &participants, &info.Name, &group)
+		if err != nil {
+			return nil, err
+		}
+		if group != 0 {
+			info.Group = true
+		}
+		info.Participants = strings.Split(participants, ",")
+		return &info, nil
+	}
+	return nil, nil
 }
 
 func (d *Db) doQuery(query string, params ...any) error {

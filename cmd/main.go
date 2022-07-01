@@ -4,6 +4,7 @@ import (
 	// "bufio"
 	// "os"
 	"flag"
+	"log"
 
 	"github.com/juju/loggo"
 	"github.com/myxo/glink/pkg"
@@ -18,7 +19,10 @@ func main() {
 	logger := loggo.GetLogger("default")
 	logger.SetLogLevel(loggo.DEBUG)
 
-	gservice := glink.NewGlinkService(&logger, *db_path)
+	gservice, err := glink.NewGlinkService(&logger, *db_path)
+	if err != nil {
+		log.Fatalf("Cannot init service: %s", err)
+	}
 	gservice.Launch()
 
 	tui := NewTui(gservice, tui_logger)
