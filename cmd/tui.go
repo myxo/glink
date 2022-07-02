@@ -157,6 +157,7 @@ func (t *Tui) initMessages() error {
 }
 
 func (t *Tui) refreshChatList() {
+	t.view.chatList.Clear()
 	for i, chat := range t.model.Chats {
 		iCopy := i
 		name := chat.Name

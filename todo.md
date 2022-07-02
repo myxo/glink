@@ -1,21 +1,21 @@
 # backlog
 [ ] Resend message via shared connection
 [ ] Fix: loss focus with mouse?
-[ ] Group chats
 [ ] UI: Add connection message
 [ ] database.go cleanup
-[ ] Pull messages pattern
 [ ] Caching DB access
 [ ] Network mocking, unit testing
 [ ] Shadow testing
 [ ] Fix: db freezes
 [ ] DB unit testing
-[ ] UI: chat list changes
+[ ] Group chats
 [ ] UI: tread safeness
 
 # current
+[ ] Pull messages pattern
 
 # done
+[x] UI: chat list changes
 [x] Chats name
 [x] Chat rooms
 [x] tui polish
