@@ -3,6 +3,7 @@ package glink
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -126,11 +127,11 @@ func (d *Db) IsKnownUid(uid string) bool {
 
 func (d *Db) SaveMessage(msg ChatMessage) error {
 	err := d.doQuery(`INSERT INTO message (uid, msg_index, cid, msg)
-      VALUES(?, ?, ?, ?)`, msg.FromUid, msg.Index, msg.ToCid, msg.Text)
+      VALUES(?, ?, ?, ?)`, msg.Uid, msg.Index, msg.Cid, msg.Text)
 	if err != nil {
 		return err
 	}
-	return d.doQuery(`UPDATE chat SET last_event_time = ? WHERE cid = ?`, time.Now().UnixMicro(), msg.FromUid)
+	return d.doQuery(`UPDATE chat SET last_event_time = ? WHERE cid = ?`, time.Now().UnixMicro(), msg.Uid)
 }
 
 func (d *Db) GetMessages(cid string, from_index, to_index uint32) ([]ChatMessage, error) {
@@ -154,7 +155,7 @@ func (d *Db) GetMessages(cid string, from_index, to_index uint32) ([]ChatMessage
 
 	for rows.Next() {
 		var msg ChatMessage
-		err = rows.Scan(&msg.FromUid, &msg.Index, &msg.ToCid, &msg.Text)
+		err = rows.Scan(&msg.Uid, &msg.Index, &msg.Cid, &msg.Text)
 		if err != nil {
 			return nil, err
 		}
@@ -163,14 +164,32 @@ func (d *Db) GetMessages(cid string, from_index, to_index uint32) ([]ChatMessage
 	return res, nil
 }
 
-func (d *Db) GetLastChats() ([]ChatInfo, error) {
-	stmt, err := d.db.Prepare(`SELECT cid, uids, name, group_flag FROM chat ORDER BY last_event_time`)
+func (d *Db) GetUsersInfo() ([]UserLightInfo, error) {
+	rows, err := d.doSelect(`SELECT uid, name FROM user`)
 	if err != nil {
 		return nil, err
 	}
-	defer stmt.Close()
+	defer rows.Close()
 
-	rows, err := stmt.Query()
+	res := make([]UserLightInfo, 0, 10)
+
+	for rows.Next() {
+		var info UserLightInfo
+		err = rows.Scan(&info.Uid, &info.Name)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, info)
+	}
+	return res, nil
+}
+
+func (d *Db) GetChats(sorted bool) ([]ChatInfo, error) {
+	sortChat := ""
+	if sorted {
+		sortChat = " ORDER BY last_event_time"
+	}
+	rows, err := d.doSelect(`SELECT cid, uids, name, group_flag FROM chat` + sortChat)
 	if err != nil {
 		return nil, err
 	}
@@ -305,4 +324,72 @@ func (d *Db) GetLastIndex(cid string) (uint32, error) {
 	err = rows.Scan(&res)
 	rows.Close()
 	return res, err
+}
+
+func (d *Db) GetVectorClockOfCids(cids []Cid) (map[Cid]VectorClock, error) {
+	query := "SELECT uid, msg_index, cid FROM message WHERE "
+	for i := 0; i < len(cids); i++ {
+		query += `cid = "` + cids[i] + `"`
+		if i != len(cids) - 1 {
+			query += " OR "
+		}
+	}
+	rows, err := d.doSelect(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[Cid]VectorClock)
+
+	for rows.Next() {
+		var cid, uid string
+		var index uint32
+		err = rows.Scan(&uid, &index, &cid)
+		if err != nil {
+			return nil, err
+		}
+		if result[cid] == nil {
+			result[cid] = make(VectorClock)
+		}
+		prevIndex, ok := result[cid][uid]
+		if !ok || index > prevIndex {
+			result[cid][uid] = index
+		}
+	}
+	return result, nil
+}
+
+
+func (d *Db) GetMessagesByVectorClock(vc map[Cid]VectorClock) ([]ChatMessage, error) {
+	template := `SELECT uid, msg_index, cid, msg FROM message WHERE cid = "%s" AND uid = "%s" AND msg_index > %d`
+	query := ""
+	first := true
+	for cid, vector := range vc {
+		for uid, index := range vector {
+			if !first {
+				query += " UNION "
+			}
+			query += fmt.Sprintf(template, cid, uid, index)
+			first = false
+		}
+	}
+
+	rows, err := d.doSelect(query)
+	if err != nil {
+		return nil, fmt.Errorf("err: %s, result query: %s", err, query)
+	}
+	defer rows.Close()
+
+	result := make([]ChatMessage, 0, 20)
+
+	for rows.Next() {
+		var msg ChatMessage
+		err = rows.Scan(&msg.Uid, &msg.Index, &msg.Cid, &msg.Text)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, msg)
+	}
+	return result, nil
 }

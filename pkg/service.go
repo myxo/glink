@@ -2,25 +2,27 @@ package glink
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
-	"go.uber.org/atomic"
 	"os"
 	"reflect"
 	"strings"
+
+	"go.uber.org/atomic"
 
 	"github.com/google/uuid"
 	"github.com/juju/loggo"
 )
 
 type GlinkService struct {
-	discovery      *Discovery
-	Server         *Server
-	Db             *Db
-	OwnChatInfo    UserLightInfo
-	UxEvents       chan interface{}
-	log            *loggo.Logger
-	conn_candidate map[string]DiscoveryInfo
-	curr_msg_index map[string]atomic.Uint32
+	discovery     *Discovery
+	Server        *Server
+	Db            *Db
+	OwnInfo       UserLightInfo
+	UxEvents      chan interface{}
+	log           *loggo.Logger
+	connCandidate map[Uid]DiscoveryInfo
+	currMsgIndex  map[Cid]atomic.Uint32
 }
 
 func readName() string {
@@ -30,30 +32,30 @@ func readName() string {
 	return text[:len(text)-1]
 }
 
-func NewGlinkService(log *loggo.Logger, db_path string) (*GlinkService, error) {
-	db, err := NewDb(db_path)
+func NewGlinkService(log *loggo.Logger, dbPath string) (*GlinkService, error) {
+	db, err := NewDb(dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	own_info := db.own_info
-	if own_info.Uid == "" {
+	ownInfo := db.own_info
+	if ownInfo.Uid == "" {
 		err = db.SetOwnCid(uuid.New().String())
 		if err != nil {
 			return nil, err
 		}
-		own_info.Uid = db.GetOwnInfo().Uid
+		ownInfo.Uid = db.GetOwnInfo().Uid
 	}
-	if own_info.Name == "" {
-		own_info.Name = readName()
-		db.SetOwnName(own_info.Name)
+	if ownInfo.Name == "" {
+		ownInfo.Name = readName()
+		db.SetOwnName(ownInfo.Name)
 	}
 
-	server, err := NewServer(own_info, log)
+	server, err := NewServer(ownInfo, log)
 	if err != nil {
 		return nil, err
 	}
-	own_announce := NodeAnnounce{Cid: own_info.Uid, Name: own_info.Name, Endpoint: server.ListenerAddress()}
+	own_announce := NodeAnnounce{Cid: ownInfo.Uid, Name: ownInfo.Name, Endpoint: server.ListenerAddress()}
 
 	log.Infof("Mine info. %s(%s): %s", own_announce.Name, own_announce.Cid, own_announce.Endpoint)
 
@@ -65,13 +67,13 @@ func NewGlinkService(log *loggo.Logger, db_path string) (*GlinkService, error) {
 	}
 
 	out := &GlinkService{discovery: discovery,
-		Server:         server,
-		Db:             db,
-		OwnChatInfo:    own_info,
-		UxEvents:       make(chan interface{}, 2),
-		log:            log,
-		conn_candidate: make(map[string]DiscoveryInfo),
-		curr_msg_index: make(map[string]atomic.Uint32),
+		Server:        server,
+		Db:            db,
+		OwnInfo:       ownInfo,
+		UxEvents:      make(chan interface{}, 2),
+		log:           log,
+		connCandidate: make(map[string]DiscoveryInfo),
+		currMsgIndex:  make(map[string]atomic.Uint32),
 	}
 	return out, nil
 }
@@ -86,16 +88,15 @@ func (g *GlinkService) Launch() {
 
 func (g *GlinkService) UserMessage(msg ChatMessage) error {
 	if msg.Text[0] == '!' {
-		g.processUserCommand(msg.Text[1:])
+		g.processCommand(msg.Text[1:])
 		return nil
 	}
-	g.log.Tracef("Send msg to cid %s", msg.ToCid)
-	msg.FromUid = g.OwnChatInfo.Uid
-	msg.FromName = g.Db.own_info.Name
+	g.log.Tracef("Send msg to cid %s", msg.Cid)
+	msg.Uid = g.OwnInfo.Uid
 
-	index, ok := g.curr_msg_index[msg.ToCid]
+	index, ok := g.currMsgIndex[msg.Cid]
 	if !ok {
-		index_tmp, err := g.Db.GetLastIndex(msg.ToCid)
+		index_tmp, err := g.Db.GetLastIndex(msg.Cid)
 		g.log.Debugf("Get msg index from db: %d", index_tmp)
 		if err != nil {
 			//g.log.Warningf("Cannot get last index: %s", err)
@@ -103,12 +104,12 @@ func (g *GlinkService) UserMessage(msg ChatMessage) error {
 			index_tmp = 0
 		}
 		index.Store(index_tmp)
-		g.curr_msg_index[msg.ToCid] = index
+		g.currMsgIndex[msg.Cid] = index
 	}
 	index.Add(1)
 	msg.Index = uint32(index.Load())
 
-	g.curr_msg_index[msg.ToCid] = index
+	g.currMsgIndex[msg.Cid] = index
 
 	err := g.Db.SaveMessage(msg)
 	if err != nil {
@@ -125,18 +126,7 @@ func (g *GlinkService) UserMessage(msg ChatMessage) error {
 }
 
 func (g *GlinkService) GetMessages(to_cid string) ([]ChatMessage, error) {
-	msgs, err := g.Db.GetMessages(to_cid, 0, 10000000)
-	if err != nil {
-		return nil, err
-	}
-	for i := range msgs {
-		// TODO: CACHE NAMES!
-		msgs[i].FromName, err = g.GetNameByCid(msgs[i].FromUid)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return msgs, nil
+	return g.Db.GetMessages(to_cid, 0, 10000000)
 }
 
 func (g *GlinkService) GetNameByCid(cid string) (string, error) {
@@ -152,20 +142,20 @@ func (g *GlinkService) serve() {
 			g.processDiscoveryEvent(new_node)
 
 		case ev := <-g.Server.NewEvent:
-			g.processEvent(ev)
+			g.processNetworkEvent(ev)
 		}
 
 	}
 }
 
-func (g *GlinkService) processEvent(ev interface{}) {
+func (g *GlinkService) processNetworkEvent(ev interface{}) {
 	g.log.Debugf("Input message of type %s", reflect.TypeOf(ev).Name())
 	switch ev := ev.(type) {
 
 	case ChatMessage:
 		var index atomic.Uint32
 		index.Store(ev.Index)
-		g.curr_msg_index[ev.ToCid] = index
+		g.currMsgIndex[ev.Cid] = index
 		err := g.Db.SaveMessage(ev)
 		if err != nil {
 			g.log.Warningf("Cannot save incoming message: %s", err)
@@ -174,7 +164,7 @@ func (g *GlinkService) processEvent(ev interface{}) {
 
 	case InviteForJoin:
 		g.log.Infof("Get InviteForJoin msg from %s(%s)", ev.Chat.Name, ev.From)
-		send := JoinChat{From: g.OwnChatInfo.Uid, To: ev.From, Cid: ev.Chat.Cid}
+		send := JoinChat{From: g.OwnInfo.Uid, To: ev.From, Cid: ev.Chat.Cid}
 		chatName := ev.Chat.Name
 		if !ev.Chat.Group {
 			username, err := g.GetNameByCid(ev.From)
@@ -206,27 +196,72 @@ func (g *GlinkService) processEvent(ev interface{}) {
 		}
 		g.UxEvents <- ChatUpdate{Info: info, NewUids: []string{ev.From}}
 
+	case WatchedCids:
+		vc, err := g.GetVectorClockOfKnownCids(ev.Cids)
+		if err != nil {
+			g.log.Errorf("Cannot get vector clock of cids [%v], error: %s", ev.Cids, err)
+		}
+		if g.log.IsTraceEnabled() {
+			pp, _ := json.MarshalIndent(vc, "", "  ")
+			g.log.Tracef("Return vector clock to %s\n%s", ev.From, pp)
+		}
+		err = SendTo(g.Server, ev.From, HaveCidInfo{From: g.OwnInfo.Uid, To: ev.From, ChatsVectorClock: vc})
+		if err != nil {
+			g.log.Errorf("Cannot send vector clock to %s, error: %s", ev.From, err)
+		}
+
+	case HaveCidInfo:
+		req, err := g.GenerateMessagesRequest(ev.ChatsVectorClock)
+		if err != nil {
+			g.log.Errorf("Cannot enerate message request: %s", err)
+		}
+		if len(req) == 0 {
+			return
+		}
+		err = SendTo(g.Server, ev.From, MessagesRequest{From: g.OwnInfo.Uid, To: ev.From, VectorClockFrom: req})
+		if err != nil {
+			g.log.Errorf("Cannot send message request: %s", err)
+		}
+
+	case MessagesRequest:
+		msgs, err := g.Db.GetMessagesByVectorClock(ev.VectorClockFrom)
+		if err != nil {
+			g.log.Errorf("Cannot get messages by vector: %s", err)
+			return
+		}
+		SendTo(g.Server, ev.From, ChatMessagePack{From: g.OwnInfo.Uid, To: ev.From, Messages: msgs})
+
+	case ChatMessagePack: 
+		for _, msg := range ev.Messages {
+			err := g.Db.SaveMessage(msg)
+			if err != nil {
+				g.log.Errorf("Cannot save msg to db: %s", err)
+				return
+			}
+		}
+		g.UxEvents <- ev
+
 	default:
-		g.log.Warningf("Unknow event %s", reflect.TypeOf(ev).Name())
+		g.log.Warningf("Service.processNetworkEvent: unknown event %s", reflect.TypeOf(ev).Name())
 	}
 }
 
-func (g *GlinkService) processUserCommand(cmd string) {
+func (g *GlinkService) processCommand(cmd string) {
 	g.log.Debugf("process user command: %s", cmd)
 	if strings.HasPrefix(cmd, "conn ") {
 		conn_name := cmd[5:]
-		node, ok := g.conn_candidate[conn_name]
+		node, ok := g.connCandidate[conn_name]
 		if !ok {
 			g.log.Errorf("Cannot find connection named %s", conn_name)
 			return
 		}
 		g.Db.SaveNewUid(node.ClientId, node.ClientName, node.Endpoint)
-		g.Server.MakeNewConnectionTo(node.ClientId, node.Endpoint)
+		g.initHandshake(node.ClientId, node.Endpoint)
 
 		cid := uuid.New().String()
-		participants := []string{g.OwnChatInfo.Uid}
-		chatInfo := ChatInfo{Cid: cid, Participants: participants, Group: false }
-		msg := InviteForJoin{From: g.OwnChatInfo.Uid, To: node.ClientId, Chat: chatInfo }
+		participants := []string{g.OwnInfo.Uid}
+		chatInfo := ChatInfo{Cid: cid, Participants: participants, Group: false}
+		msg := InviteForJoin{From: g.OwnInfo.Uid, To: node.ClientId, Chat: chatInfo}
 		err := g.Db.SaveNewChat(cid, node.ClientName, participants)
 		if err != nil {
 			g.log.Errorf("Cannot save new chat: %s", err)
@@ -244,17 +279,82 @@ func (g *GlinkService) processUserCommand(cmd string) {
 }
 
 func (g *GlinkService) processDiscoveryEvent(new_node DiscoveryInfo) {
-	if new_node.ClientId == g.OwnChatInfo.Uid {
+	if new_node.ClientId == g.OwnInfo.Uid {
 		return
 	}
 	if g.Db.IsKnownUid(new_node.ClientId) {
 		g.log.Infof("connect to known id: %s", new_node.ClientName)
-		g.Server.MakeNewConnectionTo(new_node.ClientId, new_node.Endpoint)
+		g.initHandshake(new_node.ClientId, new_node.Endpoint)
 	} else {
 		g.log.Infof("New node: %s(%s): %s", new_node.ClientName, new_node.ClientId, new_node.Endpoint)
 		// TODO: save endpoints?
 		// TODO: now logic of SaveNewUid is spread in several place. Need to figure out way to fix it
 		g.Db.SaveNewUid(new_node.ClientId, new_node.ClientName, "")
-		g.conn_candidate[new_node.ClientName] = new_node
+		g.connCandidate[new_node.ClientName] = new_node
 	}
+}
+
+func (g *GlinkService) initHandshake(uid Uid, endpoint string) error {
+	err := g.Server.MakeNewConnectionTo(uid, endpoint)
+	if err != nil {
+		return err
+	}
+	watchedCids, err := g.GetWatchedCids()	
+	if err != nil {
+		return err
+	}
+	err = SendTo(g.Server, uid, WatchedCids{From: g.OwnInfo.Uid, To: uid, Cids: watchedCids})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (g *GlinkService) GetWatchedCids() ([]Cid, error) {
+	chats, err := g.Db.GetChats(false)
+	if err != nil {
+		return nil, err
+	}
+	cids := make([]Cid, len(chats))
+	for _, chat := range chats {
+		cids = append(cids, chat.Cid)
+	}
+	return cids, nil
+}
+
+func (g *GlinkService) GetListOfKnownCids() ([]UserLightInfo, error){
+	return g.Db.GetUsersInfo()
+}
+
+func (g *GlinkService) GetVectorClockOfKnownCids(cids []Cid) (map[Cid]VectorClock, error) {
+	// TODO: caching
+	return g.Db.GetVectorClockOfCids(cids)
+}
+
+func (g *GlinkService) GenerateMessagesRequest(vectorClock map[Cid]VectorClock) (map[Cid]VectorClock, error) {
+	// TODO: caching
+	cids := make([]Cid, 0, len(vectorClock))
+	for cid := range vectorClock {
+		cids = append(cids, cid)
+	}
+	curVector, err := g.Db.GetVectorClockOfCids(cids)
+	if err != nil {
+		return nil, err
+	}
+
+	res := make(map[Cid]VectorClock)
+
+	for cid, vector := range vectorClock {
+		subVec := curVector[cid]
+		for uid, index := range vector {
+			curIndex := subVec[uid]
+			if curIndex < index {
+				if res[cid] == nil {
+					res[cid] = make(VectorClock)
+				}
+				res[cid][uid] = curIndex
+			}
+		}
+	}
+	return res, nil
 }

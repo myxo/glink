@@ -5,49 +5,82 @@ import (
 	"reflect"
 )
 
+type Uid = string
+type Cid = string
+
 type NodeAnnounce struct {
-	Cid      string
+	Cid      Cid
 	Name     string
 	Endpoint string
 }
 
 type InviteForJoin struct {
-	From string
-	To   string
+	From Uid
+	To   Uid
 	Chat ChatInfo
 }
 
 type JoinChat struct {
-	From string
-	To   string
-	Cid  string
+	From Uid
+	To   Uid
+	Cid  Cid
 }
 
 type ChatMessage struct {
-	FromUid  string
-	FromName string
-	ToCid    string
-	Text     string
-	Index    uint32
+	Uid   Uid
+	Cid   string
+	Text  string
+	Index uint32
 }
 
 type ConnectInfo struct {
-	MyUid  string
+	MyUid  Uid
 	MyName string
+}
+
+type WatchedCids struct {
+	From Uid
+	To   Uid
+	Cids []Cid
+}
+
+type HaveCidInfo struct {
+	From             Uid
+	To               Uid
+	ChatsVectorClock map[Cid]VectorClock
+}
+
+type MessagesRequest struct {
+	From            Uid
+	To              Uid
+	VectorClockFrom map[Cid]VectorClock
+}
+
+type ChatMessagePack struct {
+	From     Uid
+	To       Uid
+	Messages []ChatMessage
 }
 
 // -------------- Common ------------------------
 type ChatInfo struct {
-	Cid          string
-	Participants []string
+	Cid          Cid
+	Participants []Uid
 	Name         string
 	Group        bool
 }
 
+type VectorClockElem struct {
+	Uid   Uid
+	Index uint32
+}
+
+type VectorClock = map[Uid]uint32
+
 // --------- Internal events --------------------
 type ChatUpdate struct {
 	Info    *ChatInfo
-	NewUids []string
+	NewUids []Uid
 }
 
 func GetTypeId(cmd any) (uint16, error) {
@@ -63,7 +96,16 @@ func GetTypeId(cmd any) (uint16, error) {
 		return 4, nil
 	case "ConnectInfo":
 		return 5, nil
+	case "WatchedCids":
+		return 6, nil
+	case "HaveCidInfo":
+		return 7, nil
+	case "MessagesRequest":
+		return 8, nil
+	case "ChatMessagePack":
+		return 9, nil
 	}
+
 	return 0, fmt.Errorf("Unknown command type %s", name)
 
 }

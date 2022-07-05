@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const db_path = "tmp.db"
@@ -57,25 +58,25 @@ func TestDbWriteMsg(t *testing.T) {
 	from := "from_cid"
 	to := "to_cid"
 
-	msg1 := ChatMessage{FromUid: from, ToCid: to, Index: 1, Text: "test text"}
-	msg2 := ChatMessage{FromUid: from + "2", ToCid: to, Index: 1, Text: "test text 2"}
+	msg1 := ChatMessage{Uid: from, Cid: to, Index: 1, Text: "test text"}
+	msg2 := ChatMessage{Uid: from + "2", Cid: to, Index: 1, Text: "test text 2"}
 	err = db.SaveMessage(msg1)
 	assert.Nil(err)
 	err = db.SaveMessage(msg2)
 	assert.Nil(err)
 
-	msgs, err := db.GetMessages(from, to, 0, 100000)
+	msgs, err := db.GetMessages(to, 0, 100000)
 	assert.Nil(err)
-	assert.Equal(len(msgs), 1)
-	assert.Equal(msg1, msgs[0])
+	assert.Equal(len(msgs), 2)
+	assert.Equal([]ChatMessage{msg1, msg2}, msgs)
 
 	db, err = NewDb(db_path)
 	assert.Nil(err)
 
-	msgs, err = db.GetMessages(from+"2", to, 0, 100000)
+	msgs, err = db.GetMessages(to, 0, 100000)
 	assert.Nil(err)
-	assert.Equal(len(msgs), 1)
-	assert.Equal(msg2, msgs[0])
+	assert.Equal(len(msgs), 2)
+	assert.Equal([]ChatMessage{msg1, msg2}, msgs)
 }
 
 func TestDbWriteMsgIndex(t *testing.T) {
@@ -87,17 +88,17 @@ func TestDbWriteMsgIndex(t *testing.T) {
 	from := "from_cid"
 	to := "to_cid"
 
-	msg := ChatMessage{FromUid: from, ToCid: to, Index: 1, Text: "test text"}
+	msg := ChatMessage{Uid: from, Cid: to, Index: 1, Text: "test text"}
 	err = db.SaveMessage(msg)
 	assert.Nil(err)
-	msg = ChatMessage{FromUid: from, ToCid: to, Index: 2, Text: "test text 2"}
+	msg = ChatMessage{Uid: from, Cid: to, Index: 2, Text: "test text 2"}
 	err = db.SaveMessage(msg)
 	assert.Nil(err)
-	msg = ChatMessage{FromUid: from, ToCid: to, Index: 3, Text: "test text 3"}
+	msg = ChatMessage{Uid: from, Cid: to, Index: 3, Text: "test text 3"}
 	err = db.SaveMessage(msg)
 	assert.Nil(err)
 
-	msgs, err := db.GetMessages(from, to, 2, 10)
+	msgs, err := db.GetMessages(to, 2, 10)
 	assert.Nil(err)
 	assert.Equal(len(msgs), 2)
 	assert.Equal("test text 2", msgs[0].Text)
@@ -119,4 +120,37 @@ func TestDbHasUid(t *testing.T) {
 	assert.False(db.IsKnownUid("uid2"))
 
 	os.Remove(db_path)
+}
+
+func TestVectorClock(t *testing.T) {
+	assert := assert.New(t)
+	db, err := NewDb("")
+	assert.Nil(err)
+
+	err = db.SaveMessage(ChatMessage{Uid: "uid1", Cid: "cid1", Index: 1, Text: "test"})
+	assert.Nil(err)
+	err = db.SaveMessage(ChatMessage{Uid: "uid1", Cid: "cid1", Index: 2, Text: "test"})
+	assert.Nil(err)
+	err = db.SaveMessage(ChatMessage{Uid: "uid2", Cid: "cid1", Index: 1, Text: "test"})
+	assert.Nil(err)
+
+	err = db.SaveMessage(ChatMessage{Uid: "uid1", Cid: "cid2", Index: 1, Text: "test"})
+	assert.Nil(err)
+	
+	err = db.SaveMessage(ChatMessage{Uid: "uid1", Cid: "cid3", Index: 1, Text: "test"})
+	assert.Nil(err)
+
+
+	expected := map[Cid]VectorClock{
+		"cid1": {
+			"uid1": 2, 
+			"uid2": 1,
+		},
+		"cid2": {
+			"uid1": 1,
+		},
+	}
+	vc, err := db.GetVectorClockOfCids([]Cid{"cid1", "cid2"})
+	assert.Nil(err)
+	require.Equal(t, expected, vc)
 }

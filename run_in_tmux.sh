@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 echo Building go code...
 go build cmd/*.go
 echo Done

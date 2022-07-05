@@ -24,6 +24,7 @@ type (
 		Logs        []loggo.Entry
 		Chats       []glink.ChatInfo
 		active_chat string
+		uidToName   map[glink.Uid]string
 	}
 
 	chatView struct {
@@ -38,10 +39,10 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 	app.EnableMouse(false)
 
 	chat_model := chatModel{
-		own_info: gservice.OwnChatInfo,
+		own_info: gservice.OwnInfo,
 		Msgs:     map[string][]glink.ChatMessage{},
 	}
-	chats, err := gservice.Db.GetLastChats()
+	chats, err := gservice.Db.GetChats(true)
 	if err != nil {
 		log_writer.Warnf("Cannot read last chats: %s", err)
 	}
@@ -49,6 +50,14 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 
 	if len(chat_model.Chats) != 0 {
 		chat_model.active_chat = chat_model.Chats[0].Cid
+	}
+	uids, err := gservice.Db.GetUsersInfo()
+	if err != nil {
+		log_writer.Errorf("Cannot get users info: %s", err)
+	}
+	chat_model.uidToName = make(map[glink.Uid]string)
+	for _, info := range uids {
+		chat_model.uidToName[info.Uid] = info.Name
 	}
 
 	log_writer.Infof("Active chat: %s", chat_model.active_chat)
@@ -88,7 +97,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 				return
 			}
 			inputField.SetText("")
-			msg := glink.ChatMessage{Text: text, ToCid: chat_model.active_chat}
+			msg := glink.ChatMessage{Text: text, Cid: chat_model.active_chat}
 			gservice.UserMessage(msg)
 		})
 
@@ -127,8 +136,15 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 func (t *Tui) processEvent(ev interface{}) {
 	switch ev := ev.(type) {
 	case glink.ChatMessage:
-		t.model.Msgs[ev.ToCid] = append(t.model.Msgs[ev.ToCid], ev)
+		t.model.Msgs[ev.Cid] = append(t.model.Msgs[ev.Cid], ev)
 		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
+
+	case glink.ChatMessagePack:
+		for _, msg := range ev.Messages {
+			t.model.Msgs[msg.Cid] = append(t.model.Msgs[msg.Cid], msg)
+		}
+		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
+
 	case glink.ChatUpdate:
 		t.model.active_chat = ev.Info.Cid
 		for _, ci := range t.model.Chats {
@@ -138,7 +154,7 @@ func (t *Tui) processEvent(ev interface{}) {
 		}
 		t.model.Chats = append(t.model.Chats, *ev.Info)
 		t.app.QueueUpdateDraw(func() { t.refreshChatList() })
-		
+
 	default:
 		t.log_writer.Error("Unknown event type")
 	}
@@ -177,7 +193,8 @@ func (t *Tui) refreshChatList() {
 func (t *Tui) refreshMessages() {
 	msgs := make([]string, 0, 10)
 	for _, msg := range t.model.Msgs[t.model.active_chat] {
-		text := "[blue]" + msg.FromName + "[white]: " + msg.Text
+		name := t.GetNameByUid(msg.Uid)
+		text := "[blue]" + name + "[white]: " + msg.Text
 		msgs = append(msgs, text)
 
 	}
@@ -213,4 +230,18 @@ func (tui *Tui) Run() {
 	if err := tui.app.Run(); err != nil {
 		panic(err)
 	}
+}
+
+func (t *Tui) GetNameByUid(uid glink.Uid) string {
+	name, ok := t.model.uidToName[uid]
+	if ok {
+		return name
+	}
+	name, err := t.gservice.GetNameByCid(uid)
+	if err != nil {
+		//t.log_writer.Errorf("Cannot get name by cid: %s", err)
+		return "name?"
+	}
+	t.model.uidToName[uid] = name
+	return name
 }

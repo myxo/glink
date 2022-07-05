@@ -10,11 +10,13 @@
 - [ ] DB unit testing
 - [ ] Group chats
 - [ ] UI: tread safeness
+- [ ] UI: keyboard control
+- [ ] UI: chat + log scroll
 
 # current
-- [ ] Pull messages pattern
 
 # done
+- [x] Pull messages pattern
 - [x] UI: chat list changes
 - [x] Chats name
 - [x] Chat rooms

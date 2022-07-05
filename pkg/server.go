@@ -143,6 +143,14 @@ func (s *Server) handleUserConnectoin(c net.Conn, newEvent chan interface{}) {
 			ev, err = DecodeMsg[ChatMessage](msg.Payload)
 		case 5:
 			ev, err = DecodeMsg[ConnectInfo](msg.Payload)
+		case 6:
+			ev, err = DecodeMsg[WatchedCids](msg.Payload)
+		case 7:
+			ev, err = DecodeMsg[HaveCidInfo](msg.Payload)
+		case 8:
+			ev, err = DecodeMsg[MessagesRequest](msg.Payload)
+		case 9:
+			ev, err = DecodeMsg[ChatMessagePack](msg.Payload)
 		}
 		if err != nil {
 			s.log.Warningf("Cannot decode message of type %d, bytes: %s", hdr.MsgType, msg.Payload)
