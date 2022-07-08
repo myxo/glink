@@ -4,7 +4,6 @@
 - [ ] UI: Add connection message
 - [ ] database.go cleanup
 - [ ] Caching DB access
-- [ ] Network mocking, unit testing
 - [ ] Shadow testing
 - [ ] Fix: db freezes
 - [ ] DB unit testing
@@ -12,8 +11,11 @@
 - [ ] UI: tread safeness
 - [ ] UI: keyboard control
 - [ ] UI: chat + log scroll
+- [ ] Cid, Uid strong typing?
+- [ ] UI: pull message from past
 
 # current
+- [ ] Network mocking, service unit testing
 
 # done
 - [x] Pull messages pattern

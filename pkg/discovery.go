@@ -17,7 +17,7 @@ const (
 var knownNodes = &sync.Map{}
 
 type DiscoveryInfo struct {
-	ClientId   string
+	ClientId   Uid
 	ClientName string
 	Endpoint   string
 }
@@ -81,7 +81,7 @@ func (d *Discovery) serve() error {
 
 			if _, has := knownNodes.Load(src.String()); !has {
 				knownNodes.Store(src.String(), nil)
-				d.NewNodes <- DiscoveryInfo{ClientId: msg.Cid, ClientName: msg.Name, Endpoint: msg.Endpoint}
+				d.NewNodes <- DiscoveryInfo{ClientId: msg.Uid, ClientName: msg.Name, Endpoint: msg.Endpoint}
 			}
 		}
 	}()

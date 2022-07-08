@@ -20,10 +20,10 @@ type (
 
 	chatModel struct {
 		own_info    glink.UserLightInfo
-		Msgs        map[string][]glink.ChatMessage
+		Msgs        map[glink.Cid][]glink.ChatMessage
 		Logs        []loggo.Entry
 		Chats       []glink.ChatInfo
-		active_chat string
+		active_chat glink.Cid
 		uidToName   map[glink.Uid]string
 	}
 
@@ -40,7 +40,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 
 	chat_model := chatModel{
 		own_info: gservice.OwnInfo,
-		Msgs:     map[string][]glink.ChatMessage{},
+		Msgs:     map[glink.Cid][]glink.ChatMessage{},
 	}
 	chats, err := gservice.Db.GetChats(true)
 	if err != nil {

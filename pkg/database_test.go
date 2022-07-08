@@ -32,7 +32,7 @@ func TestDbWriteName(t *testing.T) {
 
 	db, err := NewDb(db_path)
 	assert.Nil(err)
-	err = db.SetOwnCid("uid")
+	err = db.SetOwnUid("uid")
 	assert.Nil(err)
 
 	err = db.SetOwnName("my_name")
@@ -55,8 +55,8 @@ func TestDbWriteMsg(t *testing.T) {
 	db, err := NewDb(db_path)
 	assert.Nil(err)
 
-	from := "from_cid"
-	to := "to_cid"
+	from := Uid("from_cid")
+	to := Cid("to_cid")
 
 	msg1 := ChatMessage{Uid: from, Cid: to, Index: 1, Text: "test text"}
 	msg2 := ChatMessage{Uid: from + "2", Cid: to, Index: 1, Text: "test text 2"}
@@ -85,8 +85,8 @@ func TestDbWriteMsgIndex(t *testing.T) {
 	db, err := NewDb(db_path)
 	assert.Nil(err)
 
-	from := "from_cid"
-	to := "to_cid"
+	from := Uid("from_cid")
+	to := Cid("to_cid")
 
 	msg := ChatMessage{Uid: from, Cid: to, Index: 1, Text: "test text"}
 	err = db.SaveMessage(msg)

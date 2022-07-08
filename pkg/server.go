@@ -20,14 +20,14 @@ func SendToAll[T any](s *Server, msg T) error {
 	return nil
 }
 
-func SendTo[T any](s *Server, uid string, msg T) error {
+func SendTo[T any](s *Server, uid Uid, msg T) error {
 	bytes, err := EncodeMsg(msg)
 	if err != nil {
 		return err
 	}
 	conn, ok := s.connections[uid]
 	if !ok {
-		return errors.New("Cannot get connection to " + uid)
+		return errors.New("Cannot get connection to " + string(uid))
 	}
 	conn.Write(bytes.Header)
 	conn.Write(bytes.Payload)
@@ -37,7 +37,7 @@ func SendTo[T any](s *Server, uid string, msg T) error {
 // TODO: mutex
 type Server struct {
 	listener    net.Listener
-	connections map[string]net.Conn
+	connections map[Uid]net.Conn
 	NewEvent    chan interface{}
 	log         *loggo.Logger
 	own_info    UserLightInfo
@@ -50,7 +50,7 @@ func NewServer(own_info UserLightInfo, log *loggo.Logger) (*Server, error) {
 	}
 	server := Server{
 		listener:    listener,
-		connections: make(map[string]net.Conn),
+		connections: make(map[Uid]net.Conn),
 		NewEvent:    make(chan interface{}),
 		log:         log,
 		own_info:    own_info,
@@ -68,7 +68,7 @@ func (s *Server) Close() {
 	s.listener.Close()
 }
 
-func (s *Server) MakeNewConnectionTo(uid, endpoint string) error {
+func (s *Server) MakeNewConnectionTo(uid Uid, endpoint string) error {
 	c, err := net.Dial("tcp", endpoint)
 	if err != nil {
 		s.log.Warningf("%w", err)

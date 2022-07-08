@@ -5,11 +5,11 @@ import (
 	"reflect"
 )
 
-type Uid = string
-type Cid = string
+type Uid string
+type Cid string
 
 type NodeAnnounce struct {
-	Cid      Cid
+	Uid      Uid
 	Name     string
 	Endpoint string
 }
@@ -28,7 +28,7 @@ type JoinChat struct {
 
 type ChatMessage struct {
 	Uid   Uid
-	Cid   string
+	Cid   Cid
 	Text  string
 	Index uint32
 }
