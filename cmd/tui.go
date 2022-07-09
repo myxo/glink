@@ -11,11 +11,13 @@ import (
 
 type (
 	Tui struct {
-		app        *tview.Application
-		gservice   *glink.GlinkService
-		model      *chatModel
-		view       *chatView
-		log_writer *TuiLogger
+		app          *tview.Application
+		gservice     *glink.GlinkService
+		model        *chatModel
+		view         *chatView
+		log_writer   *TuiLogger
+		focusList    []tview.Primitive
+		currentFocus int
 	}
 
 	chatModel struct {
@@ -62,26 +64,41 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 
 	log_writer.Infof("Active chat: %s", chat_model.active_chat)
 
-	chat := tview.NewTextView().
+	chatArea := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
-		SetDynamicColors(true)
+		SetDynamicColors(true).
+		ScrollToEnd()
 
-	log_view := tview.NewTextView().
+	logArea := tview.NewTextView().
 		SetTextAlign(tview.AlignLeft).
-		SetDynamicColors(true)
+		SetDynamicColors(true).
+		ScrollToEnd()
 
-	chat_list := tview.NewList()
-	tui := Tui{
-		app:        app,
-		gservice:   gservice,
-		model:      &chat_model,
-		view:       &chatView{chat: chat, logs: log_view, chatList: chat_list},
-		log_writer: log_writer,
-	}
+	chatList := tview.NewList()
 
 	inputField := tview.NewInputField().
 		SetLabel(" " + chat_model.own_info.Name + ": ").
 		SetFieldBackgroundColor(tcell.ColorBlack)
+
+	tui := Tui{
+		app:          app,
+		gservice:     gservice,
+		model:        &chat_model,
+		view:         &chatView{chat: chatArea, logs: logArea, chatList: chatList},
+		log_writer:   log_writer,
+		focusList:    []tview.Primitive{logArea, chatArea, chatList, inputField},
+		currentFocus: 3,
+	}
+
+	initFocusSetting := func(b *tview.Box) {
+		b.SetFocusFunc(func() { b.SetBorderColor(tcell.ColorRed) })
+		b.SetBlurFunc(func() { b.SetBorderColor(tcell.ColorWhite) })
+		b.SetBorder(true)
+	}
+	initFocusSetting(inputField.Box)
+	initFocusSetting(chatList.Box)
+	initFocusSetting(logArea.Box)
+	initFocusSetting(chatArea.Box)
 
 	inputField.
 		SetDoneFunc(func(key tcell.Key) {
@@ -103,10 +120,10 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 
 	grid := tview.NewGrid().
 		SetColumns(30).
-		SetBorders(true).
-		AddItem(log_view, 0, 0, 3, 3, 0, 0, false).
-		AddItem(chat, 3, 0, 3, 3, 0, 0, false).
-		AddItem(chat_list, 6, 0, 1, 3, 0, 0, false).
+		SetBorders(false).
+		AddItem(logArea, 0, 0, 3, 3, 0, 0, false).
+		AddItem(chatArea, 3, 0, 3, 3, 0, 0, false).
+		AddItem(chatList, 6, 0, 1, 3, 0, 0, false).
 		AddItem(inputField, 7, 0, 1, 3, 0, 0, true)
 
 	err = tui.initMessages()
@@ -120,16 +137,29 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		for {
 			select {
 			case ev := <-gservice.UxEvents:
-				tui.processEvent(ev)
+				app.QueueUpdateDraw(func() { tui.processEvent(ev) })
 			case log_entry := <-log_writer.Messages:
-				tui.model.Logs = append(tui.model.Logs, log_entry)
-				app.QueueUpdateDraw(func() { tui.refreshMessages() })
+				app.QueueUpdateDraw(func() { tui.processLog(log_entry) })
 			}
 		}
 	}()
 
 	app.SetRoot(grid, true).SetFocus(inputField).EnableMouse(true)
+	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyCtrlC {
+			return event
+		}
+		if event.Key() == tcell.KeyUp {
+			tui.MoveFocusUp()
+			return nil
+		} else if event.Key() == tcell.KeyDown {
+			tui.MoveFocusDown()
+			return nil
+		}
+		return event
+	})
 
+	tui.RefreshFocus()
 	return &tui
 }
 
@@ -137,13 +167,13 @@ func (t *Tui) processEvent(ev interface{}) {
 	switch ev := ev.(type) {
 	case glink.ChatMessage:
 		t.model.Msgs[ev.Cid] = append(t.model.Msgs[ev.Cid], ev)
-		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
+		t.refreshMessages()
 
 	case glink.ChatMessagePack:
 		for _, msg := range ev.Messages {
 			t.model.Msgs[msg.Cid] = append(t.model.Msgs[msg.Cid], msg)
 		}
-		t.app.QueueUpdateDraw(func() { t.refreshMessages() })
+		t.refreshMessages()
 
 	case glink.ChatUpdate:
 		t.model.active_chat = ev.Info.Cid
@@ -153,11 +183,16 @@ func (t *Tui) processEvent(ev interface{}) {
 			}
 		}
 		t.model.Chats = append(t.model.Chats, *ev.Info)
-		t.app.QueueUpdateDraw(func() { t.refreshChatList() })
+		t.refreshChatList()
 
 	default:
 		t.log_writer.Error("Unknown event type")
 	}
+}
+
+func (t *Tui) processLog(log_entry loggo.Entry) {
+	t.model.Logs = append(t.model.Logs, log_entry)
+	t.refreshMessages()
 }
 
 func (t *Tui) initMessages() error {
@@ -244,4 +279,24 @@ func (t *Tui) GetNameByUid(uid glink.Uid) string {
 	}
 	t.model.uidToName[uid] = name
 	return name
+}
+
+func (t *Tui) MoveFocusUp() {
+	if t.currentFocus == 0 {
+		return
+	}
+	t.currentFocus--
+	t.RefreshFocus()
+}
+
+func (t *Tui) MoveFocusDown() {
+	if t.currentFocus == len(t.focusList)-1 {
+		return
+	}
+	t.currentFocus++
+	t.RefreshFocus()
+}
+
+func (t *Tui) RefreshFocus() {
+	t.app.SetFocus(t.focusList[t.currentFocus])
 }

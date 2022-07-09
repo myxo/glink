@@ -8,16 +8,16 @@
 - [ ] Fix: db freezes
 - [ ] DB unit testing
 - [ ] Group chats
-- [ ] UI: tread safeness
-- [ ] UI: keyboard control
-- [ ] UI: chat + log scroll
-- [ ] Cid, Uid strong typing?
-- [ ] UI: pull message from past
-
-# current
 - [ ] Network mocking, service unit testing
 
+# current
+
 # done
+- [c] UI: pull message from past
+- [x] UI: tread safeness
+- [x] UI: keyboard control
+- [x] UI: chat + log scroll
+- [x] Cid, Uid strong typing?
 - [x] Pull messages pattern
 - [x] UI: chat list changes
 - [x] Chats name
