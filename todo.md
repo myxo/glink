@@ -1,6 +1,5 @@
 # backlog
 - [ ] Resend message via shared connection
-- [ ] Fix: loss focus with mouse?
 - [ ] UI: Add connection message
 - [ ] database.go cleanup
 - [ ] Caching DB access
@@ -13,6 +12,7 @@
 # current
 
 # done
+- [c] Fix: loss focus with mouse - disable mouse
 - [c] UI: pull message from past
 - [x] UI: tread safeness
 - [x] UI: keyboard control

@@ -144,7 +144,7 @@ func NewTui(gservice *glink.GlinkService, log_writer *TuiLogger) *Tui {
 		}
 	}()
 
-	app.SetRoot(grid, true).SetFocus(inputField).EnableMouse(true)
+	app.SetRoot(grid, true).SetFocus(inputField).EnableMouse(false)
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
 			return event
