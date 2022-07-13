@@ -7,9 +7,10 @@
 - [ ] Fix: db freezes
 - [ ] DB unit testing
 - [ ] Group chats
-- [ ] Network mocking, service unit testing
+- [ ] Combine header and payload buffers
 
 # current
+- [ ] Network mocking, service unit testing
 
 # done
 - [c] Fix: loss focus with mouse - disable mouse

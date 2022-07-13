@@ -8,30 +8,28 @@ import (
 	"github.com/juju/loggo"
 )
 
-func SendToAll[T any](s *Server, msg T) error {
+func SendToAll[T any](s IServer, msg T) error {
 	bytes, err := EncodeMsg(msg)
 	if err != nil {
 		return err
 	}
-	for _, conn := range s.connections {
-		conn.Write(bytes.Header)
-		conn.Write(bytes.Payload)
-	}
-	return nil
+	return s.SendToAll(bytes)
 }
 
-func SendTo[T any](s *Server, uid Uid, msg T) error {
+func SendTo[T any](s IServer, uid Uid, msg T) error {
 	bytes, err := EncodeMsg(msg)
 	if err != nil {
 		return err
 	}
-	conn, ok := s.connections[uid]
-	if !ok {
-		return errors.New("Cannot get connection to " + string(uid))
-	}
-	conn.Write(bytes.Header)
-	conn.Write(bytes.Payload)
-	return nil
+	return s.SendTo(uid, bytes)
+}
+
+type IServer interface {
+	Run(chan interface{})
+	ListenerAddress() string
+	SendTo(Uid, MsgBytes) error
+	SendToAll(MsgBytes) error
+	MakeNewConnectionTo(uid Uid, endpoint string) error
 }
 
 // TODO: mutex
@@ -51,17 +49,38 @@ func NewServer(own_info UserLightInfo, log *loggo.Logger) (*Server, error) {
 	server := Server{
 		listener:    listener,
 		connections: make(map[Uid]net.Conn),
-		NewEvent:    make(chan interface{}),
 		log:         log,
 		own_info:    own_info,
 	}
-	//go server.acceptLoop()
 
 	return &server, nil
 }
 
 func (s *Server) ListenerAddress() string {
 	return s.listener.Addr().String()
+}
+
+func (s *Server) Run(eventChan chan interface{}) {
+	s.NewEvent = eventChan
+	go s.acceptLoop()
+}
+
+func (s *Server) SendTo(uid Uid, bytes MsgBytes) error {
+	conn, ok := s.connections[uid]
+	if !ok {
+		return errors.New("Cannot get connection to " + string(uid))
+	}
+	conn.Write(bytes.Header)
+	conn.Write(bytes.Payload)
+	return nil
+}
+
+func (s *Server) SendToAll(bytes MsgBytes) error {
+	for _, conn := range s.connections {
+		conn.Write(bytes.Header)
+		conn.Write(bytes.Payload)
+	}
+	return nil
 }
 
 func (s *Server) Close() {
@@ -89,7 +108,7 @@ func (s *Server) MakeNewConnectionTo(uid Uid, endpoint string) error {
 	return nil
 }
 
-func (s *Server) AcceptLoop() {
+func (s *Server) acceptLoop() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {

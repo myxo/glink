@@ -22,6 +22,11 @@ type DiscoveryInfo struct {
 	Endpoint   string
 }
 
+type IDiscovery interface {
+	Run(eventChan chan DiscoveryInfo) error
+	Close()
+}
+
 type Discovery struct {
 	NewNodes chan DiscoveryInfo
 	OwnInfo  NodeAnnounce
@@ -29,10 +34,11 @@ type Discovery struct {
 }
 
 func NewDiscovery(own_info NodeAnnounce, log *loggo.Logger) *Discovery {
-	return &Discovery{NewNodes: make(chan DiscoveryInfo), OwnInfo: own_info, log: log}
+	return &Discovery{OwnInfo: own_info, log: log}
 }
 
-func (d *Discovery) Run() error {
+func (d *Discovery) Run(eventChan chan DiscoveryInfo) error {
+	d.NewNodes = eventChan
 	err := d.serve()
 	if err != nil {
 		return err
